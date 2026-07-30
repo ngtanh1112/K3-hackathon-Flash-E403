@@ -1,7 +1,7 @@
 # Reflection - Member 2
 
-- Ho ten / Ma HV:
-- Phan viec da phu trach:
-- Quyet dinh quan trong da dong gop:
-- Dieu hoc duoc:
-- Dieu se lam khac neu co them thoi gian:
+- Họ tên / Mã HV:
+- Phần việc đã phụ trách:
+- Quyết định quan trọng đã đóng góp:
+- Điều học được:
+- Điều sẽ làm khác nếu có thêm thời gian:

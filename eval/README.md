@@ -1,14 +1,14 @@
 # Eval
 
-Thu muc danh cho golden set va bang ket qua cac lan chay.
+Thư mục dành cho golden set và bảng kết quả các lần chạy.
 
-## File Nen Co
+## File Nên Có
 
-- `golden-set.csv` hoac `golden-set.jsonl`: tap cau hoi / tinh huong dung de do.
-- `run-results.md`: ket qua tung lan chay, ngay gio, model, prompt, metric.
+- `golden-set.csv` hoặc `golden-set.jsonl`: tập câu hỏi / tình huống dùng để đo.
+- `run-results.md`: kết quả từng lần chạy, ngày giờ, model, prompt, metric.
 
-## Luu Y
+## Lưu Ý
 
-- Khong dan nguyen van dai tu data pack.
-- Uu tien dung ma doan / ma hoi thoai va trich dan ngan can thiet.
-- Ghi trung thuc ca loi sai va truong hop fail.
+- Không dán nguyên văn dài từ data pack.
+- Ưu tiên dùng mã đoạn / mã hội thoại và trích dẫn ngắn cần thiết.
+- Ghi trung thực cả lỗi sai và trường hợp fail.

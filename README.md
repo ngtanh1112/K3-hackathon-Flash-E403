@@ -1,29 +1,31 @@
 # Mini Hackathon AI - Batch 03
 
-Repo nop bai cua nhom cho Mini Hackathon AI: **SPEC -> Prototype -> Demo**.
+Repo nộp bài của nhóm cho Mini Hackathon AI: **SPEC -> Prototype -> Demo**.
 
-## Thanh Vien
+Đề tài: **AI tạo đề trắc nghiệm / quiz dựa trên slide VLearn** để giúp học viên ôn lại ý chính sau mỗi buổi học lý thuyết.
 
-| Ma HV | Ho ten | Vai tro / phan viec chinh |
+## Thành Viên
+
+| Mã HV | Họ tên | Vai trò / phần việc chính |
 |---|---|---|
-| [Ma HV] | [Ten thanh vien 1] | Product discovery, evidence, spec |
-| [Ma HV] | [Ten thanh vien 2] | UX flow, prototype UI |
-| [Ma HV] | [Ten thanh vien 3] | AI integration, backend / logic |
-| [Ma HV] | [Ten thanh vien 4] | Evaluation, golden set, validation |
-| [Ma HV] | [Ten thanh vien 5] | Demo slides, tong hop, reflection |
+| [Mã HV] | [Tên thành viên 1] | Product discovery, evidence, spec |
+| [Mã HV] | [Tên thành viên 2] | UX flow, prototype UI |
+| [Mã HV] | [Tên thành viên 3] | AI integration, backend / logic |
+| [Mã HV] | [Tên thành viên 4] | Evaluation, golden set, validation |
+| [Mã HV] | [Tên thành viên 5] | Demo slides, tổng hợp, reflection |
 
-## Phan Cong Theo Artifact
+## Phân Công Theo Artifact
 
-| Artifact | Nguoi phu trach | Ghi chu |
+| Artifact | Người phụ trách | Ghi chú |
 |---|---|---|
-| `spec.md` | [Ten] | AI Spec theo template cua hackathon |
-| `codebase/` | [Ten] | Prototype, ghi ro phan mock / working |
-| `eval/` | [Ten] | Golden set va ket qua cac lan chay |
-| `validation/` | [Ten] | Feedback log tu user test |
-| `demo-slides.pdf` | [Ten] | Slide demo 6 trang |
-| `reflection/` | Moi thanh vien | Moi nguoi 1 file ca nhan |
+| `spec.md` | [Tên] | AI Spec theo template của hackathon |
+| `codebase/` | [Tên] | Prototype CP2: dán tài liệu, tạo quiz mock, làm quiz, xem kết quả |
+| `eval/` | [Tên] | Golden set và kết quả các lần chạy |
+| `validation/` | [Tên] | Feedback log từ user test |
+| `demo-slides.pdf` | [Tên] | Slide demo 6 trang |
+| `reflection/` | Mỗi thành viên | Mỗi người 1 file cá nhân |
 
-## Cau Truc Repo
+## Cấu Trúc Repo
 
 ```text
 repo/
@@ -36,9 +38,9 @@ repo/
 `-- reflection/
 ```
 
-## Luu Y Nop Bai
+## Lưu Ý Nộp Bài
 
-- Khong commit API key, token, file `.env` hoac data pack goc.
-- Chi dua vao repo cac trich dan ngan / ma doan can thiet de minh hoa evidence.
-- Ghi trung thuc ket qua do, ke ca khi chua dat muc tieu.
-- Trong `codebase/`, ghi ro phan nao la mock va phan nao goi AI that.
+- Không commit API key, token, file `.env` hoặc data pack gốc.
+- Chỉ đưa vào repo các trích dẫn ngắn / mã đoạn cần thiết để minh họa evidence.
+- Ghi trung thực kết quả đo, kể cả khi chưa đạt mục tiêu.
+- Trong `codebase/`, ghi rõ phần nào là mock và phần nào gọi AI thật.

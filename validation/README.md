@@ -1,14 +1,14 @@
 # Validation
 
-Thu muc danh cho feedback log tu vong user test.
+Thư mục dành cho feedback log từ vòng user test.
 
-## File Nen Co
+## File Nên Có
 
-- `feedback-log.md`: ai test, test luc nao, phan hoi gi.
-- `changes-after-validation.md`: nhom da doi gi sau feedback.
+- `feedback-log.md`: ai test, test lúc nào, phản hồi gì.
+- `changes-after-validation.md`: nhóm đã đổi gì sau feedback.
 
-## Mau Feedback Ngan
+## Mẫu Feedback Ngắn
 
-| Thoi gian | Nguoi test | Tinh huong test | Feedback | Hanh dong tiep theo |
+| Thời gian | Người test | Tình huống test | Feedback | Hành động tiếp theo |
 |---|---|---|---|---|
-| [Ngay gio] | [Ten / ma an danh] | [Mo ta] | [Nhan xet] | [Can lam] |
+| [Ngày giờ] | [Tên / mã ẩn danh] | [Mô tả] | [Nhận xét] | [Cần làm] |

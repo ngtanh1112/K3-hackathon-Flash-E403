@@ -1,6 +1,6 @@
 # Reflection
 
-Moi thanh vien tao 1 file rieng, vi du:
+Mỗi thành viên tạo 1 file riêng, ví dụ:
 
 - `member-1.md`
 - `member-2.md`
@@ -8,4 +8,4 @@ Moi thanh vien tao 1 file rieng, vi du:
 - `member-4.md`
 - `member-5.md`
 
-Nen doi ten file theo ma hoc vien hoac ten ngan de de cham bai.
+Nên đổi tên file theo mã học viên hoặc tên ngắn để dễ chấm bài.
