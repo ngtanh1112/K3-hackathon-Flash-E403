@@ -18,3 +18,19 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+.form-control {
+  width: 100%;
+  border: 1px solid #d9e4f2;
+  border-radius: 12px;
+  background: #fbfdff;
+  padding: 12px 14px;
+  font-weight: 700;
+  color: #172033;
+  outline: none;
+}
+
+.form-control:focus {
+  border-color: #0f4f93;
+  box-shadow: 0 0 0 3px rgba(15, 79, 147, 0.12);
+}

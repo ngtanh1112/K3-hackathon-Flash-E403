@@ -1,6 +1,6 @@
-# AI Quiz - VLearn UI Prototype
+# VLearn AI Quiz
 
-Prototype CP2 cho tính năng **AI Quiz** tích hợp trực tiếp vào giao diện đọc slide của VLearn.
+Prototype VLearn có viewer học liệu, sidebar AI Quiz và chế độ Admin để upload slide.
 
 ## Cách Chạy
 
@@ -9,34 +9,45 @@ npm install
 npm run dev
 ```
 
-Sau đó mở URL Vite hiển thị trên terminal, thường là:
+Nếu PowerShell chặn `npm.ps1`, dùng:
 
-```text
-http://localhost:5173
+```powershell
+npm.cmd run dev
 ```
 
-## Flow CP2
+## Cấu Hình AI API
 
-1. Mở giao diện VLearn giả lập.
-2. Bấm nút toggle `Quiz` sát mép phải.
-3. Sidebar `AI Quiz` trượt vào.
-4. Bấm `Generate Quiz`.
-5. Làm từng câu hỏi.
-6. Bấm `Submit Answer` để xem đúng / sai và explanation.
-7. Bấm `Next` đến hết quiz.
-8. Xem màn hình hoàn thành, điểm, accuracy và weak topics.
-9. Bấm `Retry Quiz` để làm lại.
+File `.env` đã được thêm ở thư mục `codebase`:
 
-## Công Nghệ
+```env
+VITE_OPENAI_API_KEY=
+VITE_OPENAI_MODEL=gpt-4o-mini
+```
 
-- React
-- TailwindCSS
-- Framer Motion
-- Lucide Icons
+Điền API key vào `VITE_OPENAI_API_KEY`, sau đó restart dev server. Khi chưa có key hoặc API lỗi, app tự dùng bộ câu hỏi mẫu để demo không bị đứt luồng.
 
-## Trạng Thái Prototype
+Lưu ý: đây là frontend demo, biến `VITE_` sẽ được bundle cho trình duyệt. Chỉ dùng key thật khi chạy local/hackathon, không deploy công khai theo cách này.
 
-- Không có backend.
-- Không gọi AI thật.
-- Dữ liệu quiz là mock.
-- Giao diện được dựng để giống VLearn và chứng minh flow bấm được cho Checkpoint 2.
+## Chức Năng
+
+- Chọn học liệu theo từng ngày học.
+- Tìm kiếm tài liệu trong sidebar.
+- Viewer PDF với tài liệu demo và file PDF admin upload.
+- Toolbar có đọc, bút ghi chú, highlight, zoom, reset, download, xóa note.
+- VLearn Visual Explain: bật công cụ `Visual Explain`, kéo khoanh vùng trên slide/PDF, chọn câu hỏi nhanh hoặc nhập câu hỏi tự do để nhận giải thích trong ngữ cảnh bài học.
+- Các vùng đã khoanh được lưu thành trace trong phiên học và được đưa vào prompt tạo quiz để cá nhân hóa câu hỏi.
+- VLearn Tutor: nút `Tutor` nổi bên phải mở panel chat hỏi đáp tự do theo ngữ cảnh tài liệu, trang đang xem, Agenda và Visual Explain traces.
+- Điều hướng trang và hiển thị số trang.
+- Sidebar AI Quiz: generate, chọn đáp án, nộp, feedback, next/previous, điểm, accuracy, weak topics, retry.
+- Toggle Student/Admin trên header.
+- Admin upload PDF/PPT/PPTX, nhập mô tả và nội dung/ghi chú slide để AI tạo quiz.
+- Khi admin chọn PDF/PPTX, app tự trích xuất toàn bộ text đọc được trong slide để AI tạo câu hỏi sát nội dung hơn. Ô ghi chú chỉ là tùy chọn để bổ sung trọng tâm.
+- Học liệu upload được lưu trong `localStorage` của trình duyệt cho demo.
+
+## Flow Demo
+
+1. Chạy app và mở URL Vite.
+2. Ở chế độ Student, chọn tài liệu và bấm `Quiz`.
+3. Bấm `Generate Quiz`, làm bài và xem kết quả.
+4. Chuyển sang `Admin`, upload slide mới và nhập ghi chú/nội dung chính.
+5. App tự quay về Student, tài liệu mới xuất hiện trong sidebar và có thể tạo quiz từ nội dung vừa nhập.
