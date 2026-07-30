@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowLeft,
   BookOpen,
   Bot,
@@ -10,340 +11,404 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Download,
-  Eraser,
   FileText,
   Highlighter,
-  Languages,
+  Loader2,
   Moon,
+  MoreHorizontal,
   PenLine,
   Plus,
+  RefreshCw,
   RotateCcw,
   Send,
   Sparkles,
+  Tag,
   Trash2,
+  Trophy,
   UserRound,
   X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import "./styles.css";
+import { lessons, getLessonById } from "./data/lessons.js";
+import { generateQuiz } from "./api/quizService.js";
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 
-const quizQuestions = [
-  {
-    question: "Mục đích chính của Attention trong Transformers là gì?",
-    options: [
-      "Giúp mô hình tập trung vào các phần quan trọng của chuỗi đầu vào",
-      "Nén toàn bộ dữ liệu thành một nhãn duy nhất",
-      "Thay thế hoàn toàn bước huấn luyện",
-      "Tạo màu sắc cho giao diện người dùng",
-    ],
-    correct: 0,
-    explanation:
-      "Attention cho phép mô hình gán trọng số khác nhau cho từng token, nhờ đó hiểu quan hệ ngữ cảnh tốt hơn.",
-  },
-  {
-    question: "Vì sao quiz sau buổi học giúp học viên nhớ bài tốt hơn?",
-    options: [
-      "Vì học viên chỉ cần đọc lại slide",
-      "Vì retrieval practice buộc học viên tự gọi lại kiến thức",
-      "Vì quiz luôn dễ hơn bài tập",
-      "Vì quiz thay thế toàn bộ bài giảng",
-    ],
-    correct: 1,
-    explanation:
-      "Khi tự trả lời câu hỏi, học viên phải chủ động nhớ lại kiến thức, từ đó tăng khả năng ghi nhớ dài hạn.",
-  },
-  {
-    question: "Một câu hỏi trắc nghiệm tốt nên có đặc điểm nào?",
-    options: [
-      "Có nhiều đáp án đúng để tăng độ khó",
-      "Dài nhất có thể",
-      "Rõ ràng, kiểm tra một ý chính và có một đáp án đúng",
-      "Không cần liên quan đến nội dung slide",
-    ],
-    correct: 2,
-    explanation:
-      "Câu hỏi tốt cần đo đúng một mục tiêu học tập, tránh mơ hồ và có đáp án đúng rõ ràng.",
-  },
-  {
-    question: "Trong prototype CP2, phần nào đang được mock?",
-    options: [
-      "Việc mở panel bên phải",
-      "Việc chọn đáp án",
-      "Việc sinh câu hỏi bằng AI từ slide",
-      "Việc chuyển câu hỏi tiếp theo",
-    ],
-    correct: 2,
-    explanation:
-      "Checkpoint 2 chỉ cần flow bấm được. Phần sinh quiz từ AI sẽ được thay bằng AI thật ở checkpoint sau.",
-  },
-  {
-    question: "Tại sao nên đặt nút Generate Quiz trong panel?",
-    options: [
-      "Để người học thấy quiz được tạo từ bài học đang mở",
-      "Để ẩn toàn bộ PDF Viewer",
-      "Để thay thế sidebar tài liệu",
-      "Để bỏ qua bước đọc slide",
-    ],
-    correct: 0,
-    explanation:
-      "Nút Generate Quiz tạo liên kết tự nhiên: đọc slide hiện tại trước, sau đó sinh quiz từ chính nội dung đó.",
-  },
-  {
-    question: "Khi mở sidebar AI Quiz, PDF Viewer nên phản ứng thế nào?",
-    options: [
-      "Bị che bởi sidebar",
-      "Tự thu nhỏ chiều ngang để vẫn đọc được nội dung",
-      "Reload toàn bộ trang",
-      "Biến mất hoàn toàn",
-    ],
-    correct: 1,
-    explanation:
-      "Prototype cần cho cảm giác tích hợp chính thức, vì vậy layout nên co giãn mượt thay vì che nội dung.",
-  },
-  {
-    question: "Điểm mạnh chính của AI Quiz trên VLearn là gì?",
-    options: [
-      "Tạo thêm một trang web tách biệt",
-      "Giúp học viên ôn tập ngay trong luồng đọc slide",
-      "Bắt học viên nhập lại toàn bộ bài giảng",
-      "Chỉ dùng để trang trí giao diện",
-    ],
-    correct: 1,
-    explanation:
-      "Tính năng có giá trị vì nằm đúng lúc học viên vừa xem tài liệu và cần kiểm tra mức độ hiểu bài.",
-  },
-  {
-    question: "Khi học viên trả lời sai, panel nên hiển thị gì?",
-    options: [
-      "Chỉ báo sai và không giải thích",
-      "Đáp án đúng và explanation ngắn",
-      "Tự động đóng quiz",
-      "Xóa toàn bộ câu hỏi",
-    ],
-    correct: 1,
-    explanation:
-      "Feedback tức thì giúp học viên hiểu vì sao sai và biết cần ôn lại phần nào.",
-  },
-  {
-    question: "Accuracy trong màn hình kết quả thể hiện điều gì?",
-    options: [
-      "Tỷ lệ câu trả lời đúng",
-      "Số trang PDF đã đọc",
-      "Dung lượng file slide",
-      "Số lần mở sidebar",
-    ],
-    correct: 0,
-    explanation:
-      "Accuracy là tỷ lệ đúng trên tổng số câu, giúp học viên nhìn nhanh mức độ nắm bài.",
-  },
-  {
-    question: "Mục tiêu quan trọng nhất của Checkpoint 2 là gì?",
-    options: [
-      "Có AI thật hoạt động hoàn hảo",
-      "Có giao diện đẹp nhưng không bấm được",
-      "Bấm được đến cuối flow với dữ liệu mock",
-      "Có đủ backend và database",
-    ],
-    correct: 2,
-    explanation:
-      "CP2 ưu tiên flow tương tác hoàn chỉnh: mở, bấm, submit, next, hoàn thành.",
-  },
-];
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+// ─── Root Layout ──────────────────────────────────────────────────────────────
 function Layout() {
   const [quizOpen, setQuizOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeLesson, setActiveLesson] = useState(lessons[0]);
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f3f7fb] text-vlearn-ink">
-      <Header />
-      <div className="flex h-[calc(100vh-90px)]">
-        <LeftSidebar />
+    <div className="h-screen overflow-hidden bg-slate-100 text-vlearn-ink flex flex-col">
+      <Header lesson={activeLesson} />
+      <div className="flex flex-1 min-h-0">
+        <AnimatePresence initial={false}>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 240, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden shrink-0"
+            >
+              <LeftSidebar
+                activeLesson={activeLesson}
+                onSelectLesson={(lesson) => {
+                  setActiveLesson(lesson);
+                  setQuizOpen(false);
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          className="relative z-10 flex items-center justify-center w-5 bg-white border-r border-l border-vlearn-line text-slate-400 hover:text-vlearn-teal hover:bg-vlearn-teal-light transition-colors shrink-0"
+          title={sidebarOpen ? "Ẩn sidebar" : "Hiện sidebar"}
+        >
+          {sidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+        </button>
+
         <main className="relative flex min-w-0 flex-1">
-          <PDFViewer quizOpen={quizOpen} />
+          <PDFViewer lesson={activeLesson} quizOpen={quizOpen} />
           <QuizToggle isOpen={quizOpen} onClick={() => setQuizOpen(true)} />
-          <AnimatePresence>
-            {quizOpen && <QuizSidebar onClose={() => setQuizOpen(false)} />}
-          </AnimatePresence>
+          <QuizSidebar
+            isOpen={quizOpen}
+            lesson={activeLesson}
+            onClose={() => setQuizOpen(false)}
+          />
         </main>
       </div>
     </div>
   );
 }
 
-function Header() {
+// ─── Header ───────────────────────────────────────────────────────────────────
+function Header({ lesson }) {
   return (
-    <header className="flex h-[90px] items-center justify-between border-b border-vlearn-line bg-white px-8">
-      <div className="flex items-center gap-4">
-        <button className="grid h-10 w-10 place-items-center rounded-xl border border-vlearn-line text-vlearn-blue">
-          <ArrowLeft size={20} />
+    <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-vlearn-line bg-white px-4 gap-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
+          <ArrowLeft size={18} />
         </button>
-        <div className="flex items-center gap-3 border-r border-vlearn-line pr-4">
-          <div className="h-8 w-8 rounded-lg bg-vlearn-blue text-white grid place-items-center font-black">V</div>
-          <div className="text-2xl font-extrabold">
-            <span className="text-red-600">V</span>Learn
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="h-7 w-7 rounded-md bg-vlearn-teal grid place-items-center">
+            <span className="text-white font-black text-sm leading-none">V</span>
           </div>
+          <span className="text-base font-black tracking-tight">
+            <span className="text-vlearn-teal">V</span>Learn
+          </span>
         </div>
-        <button className="grid h-10 w-10 place-items-center rounded-xl border border-vlearn-line bg-vlearn-soft text-vlearn-blue">
-          <BookOpen size={20} />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold leading-tight">day01_302.pdf</h1>
-          <p className="text-sm font-medium text-vlearn-muted">COMP2010 · Lecture_material_ms2039d0_hnxpxy</p>
+        <div className="h-5 w-px bg-vlearn-line shrink-0" />
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-7 w-7 shrink-0 grid place-items-center rounded-md bg-vlearn-teal-light text-vlearn-teal">
+            <FileText size={15} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold truncate leading-tight">
+              {lesson?.file || "day01_302.pdf"}
+            </p>
+            <p className="text-xs text-vlearn-muted truncate leading-tight">
+              COMP2010 · Lecture_material_ms2039d0
+            </p>
+          </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button className="h-10 rounded-xl border border-vlearn-line px-4 font-bold text-vlearn-blue">VI</button>
-        <button className="grid h-10 w-10 place-items-center rounded-xl border border-vlearn-line text-vlearn-blue">
-          <Moon size={18} />
+      <div className="flex items-center gap-2 shrink-0">
+        <button className="h-8 px-3 rounded-md border border-vlearn-line text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+          VI
         </button>
-        <div className="ml-2 flex items-center gap-3 rounded-full border border-vlearn-line bg-vlearn-soft px-5 py-3">
-          <UserRound size={20} className="text-vlearn-blue" />
-          <div>
-            <p className="text-sm font-bold text-vlearn-blue">Sinh viên ẩn danh</p>
-            <p className="text-base font-bold">Anonymous student</p>
+        <button className="grid h-8 w-8 place-items-center rounded-md border border-vlearn-line text-slate-500 hover:bg-slate-50 transition-colors">
+          <Moon size={16} />
+        </button>
+        <div className="flex items-center gap-2 rounded-full border border-vlearn-line bg-slate-50 px-3 py-1.5 ml-1">
+          <div className="h-6 w-6 rounded-full bg-vlearn-teal-light text-vlearn-teal grid place-items-center">
+            <UserRound size={14} />
           </div>
+          <span className="text-xs font-bold text-slate-700">Sinh viên ẩn danh</span>
         </div>
       </div>
     </header>
   );
 }
 
-function LeftSidebar() {
-  const documents = [
-    ["day01_302.pdf", "83 trang 83 pages", true],
-    ["material_mrxpq9zu_t8e6xs....", "32 trang 32 pages", false],
-  ];
+// ─── Left Sidebar ─────────────────────────────────────────────────────────────
+function LeftSidebar({ activeLesson, onSelectLesson }) {
+  const [openDays, setOpenDays] = useState({ 1: true, 2: true });
+
+  // Group lessons by day
+  const byDay = useMemo(() => {
+    const map = {};
+    lessons.forEach((l) => {
+      if (!map[l.day]) map[l.day] = [];
+      map[l.day].push(l);
+    });
+    return map;
+  }, []);
 
   return (
-    <aside className="h-full w-[400px] shrink-0 overflow-y-auto border-r border-vlearn-line bg-white px-6 py-7">
-      <div className="mb-7 flex gap-3">
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-vlearn-line bg-vlearn-soft text-vlearn-blue">
-          <BookOpen size={22} />
+    <aside className="h-full w-[240px] overflow-y-auto bg-white border-r border-vlearn-line flex flex-col">
+      <div className="px-4 pt-4 pb-3 border-b border-vlearn-line">
+        <div className="flex items-center gap-2 mb-1">
+          <BookOpen size={15} className="text-vlearn-teal shrink-0" />
+          <p className="text-sm font-bold">Học liệu môn học</p>
         </div>
-        <div>
-          <h2 className="text-xl font-extrabold">Học liệu môn học</h2>
-          <p className="mt-3 text-lg font-bold">Course learning materials</p>
-          <p className="mt-4 text-sm leading-7 text-vlearn-muted">
-            Chương, slide và tài liệu đã upload
-            <br />
-            Chapters, slides, and uploaded documents
-          </p>
-        </div>
+        <p className="text-xs text-vlearn-muted pl-[23px]">
+          Chương, slide và tài liệu đã upload
+        </p>
       </div>
 
-      <div className="space-y-5 border-t border-vlearn-line pt-5">
-        <DayCard title="Day 1" subtitle="2 TÀI LIỆU · ACTIVE 2 DOCUMENTS · ACTIVE" open>
-          <div className="space-y-3 pt-4">
-            {documents.map(([name, meta, active]) => (
-              <button
-                key={name}
-                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-4 text-left transition ${
-                  active
-                    ? "border-[#9cb9d8] bg-[#eef5fb] shadow-sm"
-                    : "border-vlearn-line bg-white hover:bg-slate-50"
-                }`}
-              >
-                <FileText size={18} className="text-vlearn-blue" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base font-extrabold">{name}</span>
-                  <span className="mt-2 block text-sm text-vlearn-muted">{meta}</span>
-                </span>
-                {active && <Check size={16} className="text-vlearn-blue" />}
-              </button>
-            ))}
-          </div>
-        </DayCard>
-        <DayCard title="Day 2" subtitle="1 TÀI LIỆU · ACTIVE 1 DOCUMENT · ACTIVE" />
-        <DayCard title="Day 3" subtitle="2 TÀI LIỆU · ACTIVE 2 DOCUMENTS · ACTIVE" />
-        <DayCard title="Day 4" subtitle="1 TÀI LIỆU · ACTIVE 1 DOCUMENT · ACTIVE" />
+      <div className="flex-1 py-2">
+        {Object.keys(byDay).map((day) => (
+          <DayItem
+            key={day}
+            day={Number(day)}
+            lessons={byDay[day]}
+            isOpen={!!openDays[day]}
+            activeLesson={activeLesson}
+            onToggle={() => setOpenDays((p) => ({ ...p, [day]: !p[day] }))}
+            onSelectLesson={onSelectLesson}
+          />
+        ))}
       </div>
     </aside>
   );
 }
 
-function DayCard({ title, subtitle, open = false, children }) {
+function DayItem({ day, lessons: dayLessons, isOpen, activeLesson, onToggle, onSelectLesson }) {
   return (
-    <section className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
-      <div className="flex items-start gap-3">
-        <div className="mt-1 grid h-5 w-5 place-items-center rounded-full border-2 border-vlearn-blue text-vlearn-blue">
-          <ChevronRight size={12} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-extrabold">{title}</h3>
-            {open && <span className="rounded-full bg-[#dfeaf4] px-3 py-1 text-xs font-bold text-vlearn-blue">STUDYING</span>}
+    <div>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-4 w-4 rounded-full border-2 border-vlearn-teal text-vlearn-teal grid place-items-center shrink-0">
+            <ChevronRight size={9} />
           </div>
-          <p className="mt-2 text-sm font-medium leading-5 text-[#8a9bb3]">{subtitle}</p>
+          <div className="min-w-0 text-left">
+            <p className="text-sm font-bold leading-tight">Day {day}</p>
+            <p className="text-[10px] text-vlearn-muted leading-tight mt-0.5">
+              {dayLessons.length} TÀI LIỆU · ACTIVE
+            </p>
+          </div>
         </div>
-        <ChevronDown size={18} className="text-[#8a9bb3]" />
+        <div className="text-slate-400 group-hover:text-slate-600 transition-colors">
+          {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-2 space-y-1">
+              {dayLessons.map((lesson) => {
+                const isActive = activeLesson?.id === lesson.id;
+                return (
+                  <button
+                    key={lesson.id}
+                    onClick={() => onSelectLesson(lesson)}
+                    className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      isActive
+                        ? "bg-vlearn-teal-light border border-vlearn-teal/30"
+                        : "hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    <div className={`h-5 w-5 shrink-0 rounded-full border-2 grid place-items-center ${
+                      isActive
+                        ? "border-vlearn-teal bg-vlearn-teal text-white"
+                        : "border-slate-300 text-slate-300"
+                    }`}>
+                      {isActive && <Check size={10} strokeWidth={3} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-bold truncate leading-tight ${
+                        isActive ? "text-vlearn-teal" : "text-slate-700"
+                      }`}>
+                        {lesson.file}
+                      </p>
+                      <p className="text-[10px] text-vlearn-muted mt-0.5">
+                        {lesson.pages} trang
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── PDF Viewer ───────────────────────────────────────────────────────────────
+function PDFViewer({ lesson, quizOpen }) {
+  const [zoom, setZoom] = useState(100);
+  const [page, setPage] = useState(1);
+  const [numPages, setNumPages] = useState(null);
+  
+  const totalPages = numPages || lesson?.pages || 83;
+
+  const zoomIn = () => setZoom((z) => Math.min(z + 25, 200));
+  const zoomOut = () => setZoom((z) => Math.max(z - 25, 50));
+  const prevPage = () => setPage((p) => Math.max(p - 1, 1));
+  const nextPage = () => setPage((p) => Math.min(p + 1, totalPages));
+
+  function onDocumentLoadSuccess({ numPages }) {
+    setNumPages(numPages);
+    setPage(1);
+  }
+
+  React.useEffect(() => {
+    if (!lesson?.pdfFile) setPage(1);
+  }, [lesson?.id]);
+
+  return (
+    <section
+      className={`relative min-w-0 flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
+        quizOpen ? "mr-[390px]" : "mr-0"
+      }`}
+    >
+      {/* Floating toolbar */}
+      <div className="absolute left-4 right-4 top-3 z-10 flex items-center justify-between rounded-xl border border-vlearn-line bg-white/96 px-3 py-2 shadow-toolbar backdrop-blur-sm">
+        <div className="flex items-center gap-1">
+          <ToolbarBtn active icon={<Send size={14} />} label="Đọc" />
+          <ToolbarBtn icon={<PenLine size={14} />} label="Bút" />
+          <ToolbarBtn icon={<Highlighter size={14} />} label="Highlight" />
+          <ToolbarBtn icon={<MoreHorizontal size={14} />} />
+          <div className="mx-2 h-5 w-px bg-vlearn-line" />
+          <span className="rounded-full bg-vlearn-teal-light px-3 py-1 text-xs font-bold text-vlearn-teal">
+            Trang {page} · 1 note
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <ToolbarBtn icon={<ZoomOut size={14} />} onClick={zoomOut} />
+          <span className="px-2 text-xs font-bold text-slate-600 min-w-[40px] text-center">{zoom}%</span>
+          <ToolbarBtn icon={<ZoomIn size={14} />} onClick={zoomIn} />
+          <div className="mx-2 h-5 w-px bg-vlearn-line" />
+          <ToolbarBtn icon={<Plus size={14} />} />
+          <ToolbarBtn icon={<Download size={14} />} />
+          <ToolbarBtn icon={<RotateCcw size={14} />} muted />
+          <ToolbarBtn icon={<Trash2 size={14} />} muted />
+        </div>
       </div>
-      {children}
+
+      {/* Slide / PDF area with Notebook Background */}
+      <div 
+        className="flex-1 overflow-y-auto relative pt-[68px] pb-24"
+        style={{ 
+          backgroundColor: '#f8fafc',
+          backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #e2e8f0 31px, #e2e8f0 32px)'
+        }}
+      >
+        <div className="mx-auto max-w-[900px] px-8">
+          {lesson?.pdfFile ? (
+            <Document
+              file={lesson.pdfFile}
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={
+                <div className="w-[800px] h-[600px] flex mx-auto items-center justify-center bg-slate-50 rounded-2xl ring-1 ring-slate-200/50 text-slate-400 mt-10">
+                  <Loader2 className="animate-spin w-8 h-8" />
+                </div>
+              }
+            >
+              {Array.from(new Array(numPages || 0), (el, index) => (
+                <div key={`page_${index + 1}`} className="mb-16">
+                  <div className="flex items-center justify-between py-2 text-[10px] font-bold text-slate-400 mb-4 border-b border-slate-200/50">
+                    <span>Trang {index + 1} / {totalPages}</span>
+                    <span>{lesson?.file || 'day01_302.pdf'}</span>
+                  </div>
+                  <div className="relative rounded-2xl bg-white shadow-xl overflow-hidden ring-1 ring-slate-200/50 mx-auto w-fit min-h-[400px]">
+                    <Page 
+                      pageNumber={index + 1} 
+                      width={800} 
+                      scale={zoom / 100}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={false}
+                      className="bg-white"
+                    />
+                    {/* Watermark overlay */}
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
+                      <span className="transform -rotate-[20deg] text-3xl font-black text-slate-500 whitespace-nowrap select-none">
+                        26AI.KHANHLIN.VINUNI.EDU.VN
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </Document>
+          ) : (
+            <div className="min-h-[400px]">
+              <div className="flex items-center justify-between py-2 text-[10px] font-bold text-slate-400 mb-4 border-b border-slate-200/50">
+                <span>Trang {page} / {totalPages}</span>
+                <span>{lesson?.file || 'day01_302.pdf'}</span>
+              </div>
+              <SlideCard lesson={lesson} page={page} zoom={zoom} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Left/Right arrows */}
+        <>
+          <button
+            onClick={prevPage} disabled={page <= 1}
+            className="absolute left-0 top-1/2 -translate-y-1/2 grid h-16 w-9 place-items-center rounded-r-xl border border-vlearn-line bg-white text-slate-400 shadow-toolbar hover:text-vlearn-teal transition-colors disabled:opacity-30 z-20"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={nextPage} disabled={page >= totalPages}
+            className="absolute right-0 top-1/2 -translate-y-1/2 grid h-16 w-9 place-items-center rounded-l-xl border border-vlearn-line bg-white text-slate-400 shadow-toolbar hover:text-vlearn-teal transition-colors disabled:opacity-30 z-20"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </>
+
+
+      {/* Bottom nav */}
+        <div className="absolute bottom-0 left-0 right-0 flex h-[56px] items-center justify-center gap-4 border-t border-vlearn-line bg-white/96 backdrop-blur-sm z-20">
+          <button onClick={prevPage} disabled={page <= 1}
+            className="grid h-8 w-8 place-items-center rounded-full border border-vlearn-line text-slate-500 hover:border-vlearn-teal hover:text-vlearn-teal transition-colors disabled:opacity-30">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-sm font-semibold text-slate-600">
+            Trang <b className="text-slate-900">{page}</b> / {totalPages}
+          </span>
+          <button onClick={nextPage} disabled={page >= totalPages}
+            className="grid h-8 w-8 place-items-center rounded-full border border-vlearn-line text-slate-500 hover:border-vlearn-teal hover:text-vlearn-teal transition-colors disabled:opacity-30">
+            <ChevronRight size={16} />
+          </button>
+        </div>
     </section>
   );
 }
 
-function PDFViewer({ quizOpen }) {
+function ToolbarBtn({ icon, label, active = false, muted = false, onClick }) {
   return (
-    <section className={`relative min-w-0 flex-1 overflow-hidden transition-all duration-300 ${quizOpen ? "mr-[390px]" : "mr-0"}`}>
-      <div className="absolute left-6 right-6 top-5 z-10 flex items-center justify-between rounded-2xl border border-vlearn-line bg-white/95 px-4 py-3 shadow-vlearn backdrop-blur">
-        <div className="flex items-center gap-2">
-          <ToolbarButton active icon={<Send size={16} />} label="Đọc" />
-          <ToolbarButton icon={<PenLine size={16} />} label="Bút" />
-          <ToolbarButton icon={<Highlighter size={16} />} label="Highlight" />
-          <span className="ml-4 rounded-full bg-vlearn-soft px-4 py-2 text-sm font-extrabold text-vlearn-blue">Trang 1 · 1 note</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ToolbarButton icon={<ZoomOut size={16} />} label="" />
-          <span className="px-2 text-sm font-extrabold">100%</span>
-          <ToolbarButton icon={<ZoomIn size={16} />} label="" />
-          <div className="mx-2 h-8 w-px bg-vlearn-line" />
-          <ToolbarButton icon={<Plus size={17} />} label="" />
-          <ToolbarButton icon={<Download size={16} />} label="" />
-          <ToolbarButton icon={<RotateCcw size={16} />} label="" muted />
-          <ToolbarButton icon={<Trash2 size={16} />} label="" muted />
-        </div>
-      </div>
-
-      <div className="h-full overflow-y-auto bg-[#eaf1f8] px-8 pb-28 pt-32">
-        <SlidePage page={1} title="AI & LLM Foundation" large />
-        <SlidePage page={2} title="Instructor" />
-        <SlidePage page={3} title="Retrieval Practice" />
-      </div>
-
-      <button className="absolute left-0 top-1/2 grid h-20 w-12 -translate-y-1/2 place-items-center rounded-r-2xl border border-vlearn-line bg-white text-[#8aa1bc] shadow-vlearn">
-        <ChevronLeft size={28} />
-      </button>
-      <button className="absolute right-0 top-1/2 grid h-20 w-12 -translate-y-1/2 place-items-center rounded-l-2xl border border-vlearn-line bg-white text-[#8aa1bc] shadow-vlearn">
-        <ChevronRight size={28} />
-      </button>
-
-      <div className="absolute bottom-0 left-0 right-0 flex h-[86px] items-center justify-center gap-5 border-t border-vlearn-line bg-white/95 shadow-[0_-10px_28px_rgba(15,79,147,0.08)]">
-        <button className="grid h-11 w-11 place-items-center rounded-full border border-vlearn-line text-[#91a4bd]">
-          <ChevronLeft size={20} />
-        </button>
-        <div className="grid gap-2 text-sm font-semibold text-vlearn-muted">
-          <span>Trang <b className="px-2 text-vlearn-ink">1</b> / 83</span>
-          <span>Page <b className="px-2 text-vlearn-ink">21</b> / 83</span>
-        </div>
-        <button className="grid h-11 w-11 place-items-center rounded-full border border-vlearn-line text-vlearn-blue">
-          <ChevronRight size={20} />
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function ToolbarButton({ icon, label, active = false, muted = false }) {
-  return (
-    <button
-      className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-extrabold ${
-        active
-          ? "border-[#aac4df] bg-vlearn-soft text-vlearn-blue"
-          : muted
-            ? "border-vlearn-line bg-white text-[#b5c1d0]"
-            : "border-vlearn-line bg-white text-[#40516a]"
+    <button onClick={onClick}
+      className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition-colors ${
+        active ? "bg-vlearn-teal-light text-vlearn-teal border border-vlearn-teal/30"
+        : muted ? "text-slate-300 hover:text-slate-500"
+        : "text-slate-600 hover:bg-slate-100"
       }`}
     >
       {icon}
@@ -352,31 +417,81 @@ function ToolbarButton({ icon, label, active = false, muted = false }) {
   );
 }
 
-function SlidePage({ page, title, large = false }) {
+function SlideCard({ lesson, page, zoom }) {
+  const scale = zoom / 100;
+  
+  // Lấy danh sách các đoạn trích từ lesson, chia nhỏ thành từng "trang slide"
+  const paragraphs = lesson?.excerpts ? lesson.excerpts.split("\n\n").filter(Boolean) : [];
+  const contentCount = paragraphs.length;
+  
+  // Tính toán nội dung để hiển thị trên trang hiện tại
+  // Nếu là trang 1, hiển thị Title Card
+  // Các trang sau hiển thị nội dung (lặp lại nếu số trang PDF lớn hơn số nội dung)
+  const isTitlePage = page === 1;
+  const contentIndex = (page - 2) % (contentCount || 1);
+  const slideContent = paragraphs[contentIndex] || "Nội dung đang được cập nhật...";
+
   return (
-    <article className="mx-auto mb-9 max-w-[1050px] rounded-[26px] border border-[#9ec5e7] bg-[#fffdf5] p-6 shadow-sm">
-      <div className="flex items-center justify-between border-b border-[#efe8d7] pb-4 text-xs font-semibold text-[#7894b9]">
-        <div className="grid gap-3">
-          <span>Trang {page} / 83</span>
-          <span>Page {page} / 83</span>
+    <div
+      className="mx-auto max-w-[900px]"
+      style={{ transform: `scale(${scale})`, transformOrigin: "top center" }}
+    >
+      <article className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden aspect-[4/3] flex flex-col">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5 bg-white shrink-0">
+          <span className="text-xs font-semibold text-slate-400">Trang {page} / {lesson?.pages || 83}</span>
+          <span className="text-xs font-semibold text-slate-400">{lesson?.file}</span>
         </div>
-        <span>day01_302.pdf</span>
-      </div>
-      <div className={`${large ? "h-[380px]" : "h-[210px]"} relative mt-5 overflow-hidden rounded-2xl border border-[#c9d7c8] bg-[#96b99f] p-9 shadow`}>
-        <p className="mb-16 text-xs font-bold text-[#21334d]">AI IN ACTION - Day {page}</p>
-        <h2 className="text-3xl font-black text-[#172033]">{title}</h2>
-        <p className="mt-3 text-sm italic text-[#38513f]">
-          Bạn đang dùng AI mỗi ngày - nhưng thực sự bên trong nó đang làm gì?
-        </p>
-        <p className="absolute bottom-9 left-9 text-xs font-semibold text-[#21334d]">Instructor: Mai Anh Nguyen (Blue)</p>
-        <p className="absolute right-10 top-1/2 -rotate-24 text-2xl font-black tracking-widest text-[#7ea287]/60">
-          VLEARN.EDU.VN
-        </p>
-      </div>
-    </article>
+        
+        {isTitlePage ? (
+          <div className="relative flex-1 bg-gradient-to-br from-[#2a6e5c] to-[#1a4d40] p-10 flex flex-col justify-center">
+            <p className="text-[13px] font-bold text-emerald-300/80 mb-6 uppercase tracking-wider">
+              AI IN ACTION — Day {lesson?.day || 1}
+            </p>
+            <h2 className="text-4xl font-black text-white leading-tight mb-4">
+              {lesson?.title || "Foundation: Cách LLM hoạt động"}
+            </h2>
+            <p className="text-lg italic text-emerald-100/80 mb-8">{lesson?.subtitle}</p>
+            <div className="flex flex-wrap gap-2 mt-auto">
+              {lesson?.topics?.slice(0, 5).map((t) => (
+                <span key={t} className="rounded-full bg-white/10 border border-white/20 px-4 py-1.5 text-sm font-bold text-white/90">
+                  {t}
+                </span>
+              ))}
+            </div>
+            <p className="absolute right-12 top-12 text-3xl font-black tracking-widest text-white/5 pointer-events-none">
+              VLEARN
+            </p>
+            <p className="absolute bottom-8 right-10 text-sm font-semibold text-emerald-200/50">
+              Instructor: Mai Anh Nguyen (Blue)
+            </p>
+          </div>
+        ) : (
+          <div className="flex-1 bg-white p-12 flex flex-col">
+            <div className="mb-6 flex items-center gap-3">
+              <div className="h-8 w-2 bg-vlearn-teal rounded-full" />
+              <h2 className="text-2xl font-black text-slate-800">
+                {lesson?.topics?.[contentIndex % (lesson?.topics?.length || 1)] || "Nội dung bài học"}
+              </h2>
+            </div>
+            
+            <div className="flex-1 rounded-xl bg-slate-50 border border-slate-100 p-8">
+              <p className="text-lg text-slate-700 leading-relaxed font-medium">
+                {slideContent.replace(/^\[T\d+-\d+\]\s*/, "")}
+              </p>
+            </div>
+            
+            <div className="mt-8 flex justify-between items-center text-xs font-bold text-slate-400">
+              <p>Mã trích dẫn: {slideContent.match(/^\[T\d+-\d+\]/) || "[N/A]"}</p>
+              <p>Khóa K3 - AI Product Hackathon</p>
+            </div>
+          </div>
+        )}
+      </article>
+    </div>
   );
 }
 
+// ─── Quiz Toggle Button ────────────────────────────────────────────────────────
 function QuizToggle({ isOpen, onClick }) {
   if (isOpen) return null;
   return (
@@ -385,91 +500,156 @@ function QuizToggle({ isOpen, onClick }) {
       onClick={onClick}
       initial={{ x: 20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="absolute right-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2 rounded-l-2xl border border-vlearn-line bg-white px-3 py-4 text-sm font-extrabold text-vlearn-blue shadow-vlearn"
+      className="absolute right-0 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-l-xl border border-r-0 border-vlearn-teal/40 bg-white px-2.5 py-4 text-vlearn-teal shadow-vlearn hover:bg-vlearn-teal-light transition-colors"
+      title="Mở AI Quiz"
     >
-      <BrainCircuit size={20} />
-      Quiz
+      <BrainCircuit size={18} />
+      <span className="text-[10px] font-black tracking-wider"
+        style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}>
+        AI Quiz
+      </span>
     </motion.button>
   );
 }
 
-function QuizSidebar({ onClose }) {
-  const [started, setStarted] = useState(false);
+// ─── Quiz States ──────────────────────────────────────────────────────────────
+const QUIZ_STATE = {
+  INTRO: "intro",
+  LOADING: "loading",
+  ACTIVE: "active",
+  RESULT: "result",
+  ERROR: "error",
+};
+
+// ─── Quiz Sidebar ──────────────────────────────────────────────────────────────
+function QuizSidebar({ isOpen, lesson, onClose }) {
+  const [quizState, setQuizState] = useState(QUIZ_STATE.INTRO);
+  const [questions, setQuestions] = useState([]);
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [answers, setAnswers] = useState([]);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [questionCount, setQuestionCount] = useState(lesson?.estimatedQuestions || 15);
 
-  const score = useMemo(
-    () => answers.filter((answer, index) => answer === quizQuestions[index]?.correct).length,
-    [answers],
-  );
-  const completed = started && current >= quizQuestions.length;
-  const question = quizQuestions[current];
-
-  function generateQuiz() {
-    setStarted(true);
+  // Reset khi đổi bài học
+  React.useEffect(() => {
+    setQuizState(QUIZ_STATE.INTRO);
+    setQuestions([]);
     setCurrent(0);
     setSelected(null);
     setSubmitted(false);
     setAnswers([]);
-  }
+    setQuestionCount(lesson?.estimatedQuestions || 15);
+  }, [lesson?.id]);
 
-  function submitAnswer() {
+  const score = useMemo(
+    () => answers.filter((a, i) => a === questions[i]?.correct).length,
+    [answers, questions]
+  );
+
+  const completed = quizState === QUIZ_STATE.ACTIVE && current >= questions.length && questions.length > 0;
+
+  const handleGenerate = useCallback(async () => {
+    setQuizState(QUIZ_STATE.LOADING);
+    setErrorMsg("");
+    try {
+      const qs = await generateQuiz(lesson, questionCount);
+      setQuestions(qs);
+      setCurrent(0);
+      setSelected(null);
+      setSubmitted(false);
+      setAnswers([]);
+      setQuizState(QUIZ_STATE.ACTIVE);
+    } catch (err) {
+      setErrorMsg(err.message || "Có lỗi khi sinh câu hỏi");
+      setQuizState(QUIZ_STATE.ERROR);
+    }
+  }, [lesson, questionCount]);
+
+  const handleSubmit = () => {
     if (selected === null) return;
-    const nextAnswers = [...answers];
-    nextAnswers[current] = selected;
-    setAnswers(nextAnswers);
+    const next = [...answers];
+    next[current] = selected;
+    setAnswers(next);
     setSubmitted(true);
-  }
+  };
 
-  function goNext() {
-    setCurrent((value) => value + 1);
+  const handleNext = () => {
+    const nextIdx = current + 1;
+    setCurrent(nextIdx);
     setSelected(null);
     setSubmitted(false);
-  }
+    if (nextIdx >= questions.length) {
+      setQuizState(QUIZ_STATE.RESULT);
+    }
+  };
 
-  function goPrevious() {
+  const handlePrev = () => {
     if (current === 0) return;
-    const previousIndex = current - 1;
-    setCurrent(previousIndex);
-    setSelected(answers[previousIndex] ?? null);
-    setSubmitted(Boolean(answers[previousIndex] !== undefined));
-  }
+    const prev = current - 1;
+    setCurrent(prev);
+    setSelected(answers[prev] ?? null);
+    setSubmitted(answers[prev] !== undefined);
+  };
+
+  const handleRetry = () => {
+    setQuizState(QUIZ_STATE.INTRO);
+    setQuestions([]);
+    setCurrent(0);
+    setSelected(null);
+    setSubmitted(false);
+    setAnswers([]);
+  };
 
   return (
     <motion.aside
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute right-0 top-0 z-30 flex h-full w-[390px] flex-col border-l border-vlearn-line bg-white shadow-[-12px_0_32px_rgba(15,79,147,0.12)]"
+      initial={false}
+      animate={{ 
+        x: isOpen ? 0 : "100%",
+        boxShadow: isOpen ? "-8px 0 24px rgba(15,23,42,0.08)" : "none" 
+      }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="absolute right-0 top-0 z-30 flex h-full w-[390px] flex-col border-l border-vlearn-line bg-white"
     >
-      <div className="flex items-start justify-between border-b border-vlearn-line px-5 py-5">
-        <div className="flex gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-vlearn-soft text-vlearn-blue">
-            <BrainCircuit size={22} />
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-vlearn-line px-5 py-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-vlearn-teal-light text-vlearn-teal">
+            <BrainCircuit size={20} />
           </div>
           <div>
-            <h2 className="text-xl font-black">AI Quiz</h2>
-            <p className="mt-1 text-sm font-medium text-vlearn-muted">Kiểm tra mức độ hiểu bài</p>
+            <h2 className="text-base font-black">AI Quiz</h2>
+            <p className="text-xs font-medium text-vlearn-muted">
+              {lesson?.title || "Kiểm tra mức độ hiểu bài"}
+            </p>
           </div>
         </div>
-        <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-vlearn-line text-vlearn-muted">
-          <X size={18} />
+        <button onClick={onClose}
+          className="grid h-8 w-8 place-items-center rounded-full border border-vlearn-line text-vlearn-muted hover:bg-slate-50 hover:text-slate-700 transition-colors">
+          <X size={16} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-5">
-        {!started && (
-          <IntroCard onGenerate={generateQuiz} />
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {quizState === QUIZ_STATE.INTRO && (
+          <IntroCard
+            lesson={lesson}
+            questionCount={questionCount}
+            onChangeCount={setQuestionCount}
+            onGenerate={handleGenerate}
+          />
         )}
-
-        {started && !completed && question && (
+        {quizState === QUIZ_STATE.LOADING && <LoadingCard lesson={lesson} questionCount={questionCount} />}
+        {quizState === QUIZ_STATE.ERROR && (
+          <ErrorCard message={errorMsg} onRetry={handleGenerate} />
+        )}
+        {quizState === QUIZ_STATE.ACTIVE && questions.length > 0 && current < questions.length && (
           <>
-            <ProgressBar current={current + 1} total={quizQuestions.length} />
+            <ProgressBar current={current + 1} total={questions.length} answers={answers} questions={questions} />
             <QuestionCard
-              question={question}
+              question={questions[current]}
               current={current}
               selected={selected}
               submitted={submitted}
@@ -477,40 +657,42 @@ function QuizSidebar({ onClose }) {
             />
           </>
         )}
-
-        {completed && (
+        {quizState === QUIZ_STATE.RESULT && (
           <ResultCard
             score={score}
-            total={quizQuestions.length}
-            onRetry={generateQuiz}
+            total={questions.length}
+            questions={questions}
+            answers={answers}
+            lesson={lesson}
+            onRetry={handleRetry}
+            onRegenerate={handleGenerate}
           />
         )}
       </div>
 
-      {started && !completed && (
-        <div className="border-t border-vlearn-line bg-white px-5 py-4">
+      {/* Bottom action bar — only during active quiz */}
+      {quizState === QUIZ_STATE.ACTIVE && current < questions.length && (
+        <div className="border-t border-vlearn-line bg-white px-4 py-3 shrink-0">
           <button
-            onClick={submitAnswer}
+            onClick={handleSubmit}
             disabled={selected === null || submitted}
-            className="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-blue font-extrabold text-white disabled:cursor-not-allowed disabled:bg-[#b9c8d9]"
+            className="mb-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-teal font-extrabold text-white text-sm transition-colors hover:bg-vlearn-teal-dark disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            <Check size={18} />
-            Submit Answer
+            <Check size={16} />
+            Xác nhận đáp án
           </button>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={goPrevious}
-              disabled={current === 0}
-              className="h-11 rounded-xl border border-vlearn-line font-bold text-vlearn-muted disabled:opacity-40"
+              onClick={handlePrev} disabled={current === 0}
+              className="h-9 rounded-xl border border-vlearn-line text-sm font-bold text-vlearn-muted hover:bg-slate-50 transition-colors disabled:opacity-40"
             >
-              Previous
+              ← Câu trước
             </button>
             <button
-              onClick={goNext}
-              disabled={!submitted}
-              className="h-11 rounded-xl border border-vlearn-line font-bold text-vlearn-blue disabled:opacity-40"
+              onClick={handleNext} disabled={!submitted}
+              className="h-9 rounded-xl border border-vlearn-teal/50 text-sm font-bold text-vlearn-teal hover:bg-vlearn-teal-light transition-colors disabled:opacity-40"
             >
-              Next
+              Câu sau →
             </button>
           </div>
         </div>
@@ -519,134 +701,401 @@ function QuizSidebar({ onClose }) {
   );
 }
 
-function IntroCard({ onGenerate }) {
+// ─── Intro Card ───────────────────────────────────────────────────────────────
+function IntroCard({ lesson, questionCount, onChangeCount, onGenerate }) {
+  const options = [10, 15, 20, 25, 30];
   return (
-    <section className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-5 shadow-sm">
-      <div className="mb-5 flex items-center gap-2 text-sm font-bold text-emerald-600">
-        <Sparkles size={18} />
-        Contextual learning assistant
+    <section className="space-y-4">
+      {/* Lesson info */}
+      <div className="rounded-2xl border border-vlearn-teal/30 bg-vlearn-teal-soft p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles size={14} className="text-vlearn-teal" />
+          <span className="text-xs font-bold text-vlearn-teal">Contextual AI Quiz</span>
+        </div>
+        <h3 className="text-sm font-black leading-snug mb-1">{lesson?.title}</h3>
+        <p className="text-xs text-vlearn-muted mb-3">{lesson?.subtitle}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {lesson?.topics?.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-vlearn-teal-light border border-vlearn-teal/20 px-2 py-0.5 text-[10px] font-bold text-vlearn-teal">
+              <Tag size={8} />
+              {t}
+            </span>
+          ))}
+        </div>
       </div>
-      <p className="mb-3 text-xs font-semibold text-vlearn-muted">Ngữ cảnh: Slide trang 1</p>
-      <h3 className="text-lg font-black">Tạo quiz từ bài học đang mở</h3>
-      <p className="mt-3 text-sm leading-6 text-vlearn-muted">
-        Sau khi đọc slide, bấm Generate Quiz để AI tạo 10 câu hỏi ôn tập ngay trong sidebar này.
-      </p>
-      <button
-        onClick={onGenerate}
-        className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn"
-      >
-        <Bot size={18} />
-        Generate Quiz
-      </button>
-    </section>
-  );
-}
 
-function ProgressBar({ current, total }) {
-  return (
-    <section className="mb-5 rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="font-black">Quiz Progress</p>
-        <p className="text-sm font-extrabold text-vlearn-blue">{current} / {total} Questions</p>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[#dce6f1]">
-        <div
-          className="h-full rounded-full bg-vlearn-blue transition-all duration-300"
-          style={{ width: `${(current / total) * 100}%` }}
-        />
-      </div>
-    </section>
-  );
-}
-
-function QuestionCard({ question, current, selected, submitted, onSelect }) {
-  const isCorrect = selected === question.correct;
-
-  return (
-    <section className="rounded-2xl border border-vlearn-line bg-white p-5 shadow-sm">
-      <p className="mb-2 text-sm font-extrabold text-vlearn-blue">Question {current + 1}</p>
-      <h3 className="text-lg font-black leading-7">{question.question}</h3>
-      <div className="mt-5 space-y-3">
-        {question.options.map((option, index) => {
-          const active = selected === index;
-          const correct = submitted && index === question.correct;
-          const wrong = submitted && active && index !== question.correct;
-          return (
+      {/* Số câu hỏi */}
+      <div className="rounded-2xl border border-vlearn-line bg-white p-4">
+        <p className="text-xs font-bold text-slate-700 mb-3">Số câu hỏi muốn sinh</p>
+        <div className="flex gap-2 flex-wrap">
+          {options.map((n) => (
             <button
-              key={option}
-              onClick={() => !submitted && onSelect(index)}
-              className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                correct
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                  : wrong
-                    ? "border-red-300 bg-red-50 text-red-700"
-                    : active
-                      ? "border-vlearn-blue bg-vlearn-soft text-vlearn-blue"
-                      : "border-vlearn-line bg-white hover:bg-slate-50"
+              key={n}
+              onClick={() => onChangeCount(n)}
+              className={`h-9 w-12 rounded-xl border text-sm font-black transition-colors ${
+                questionCount === n
+                  ? "border-vlearn-teal bg-vlearn-teal text-white"
+                  : "border-vlearn-line text-slate-600 hover:border-vlearn-teal/50 hover:text-vlearn-teal"
               }`}
             >
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs font-black">
-                {String.fromCharCode(65 + index)}
-              </span>
-              <span>{option}</span>
+              {n}
             </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-vlearn-muted mt-2">
+          AI sẽ sinh {questionCount} câu hỏi dựa trên nội dung bài giảng thật
+        </p>
+      </div>
+
+      {/* Generate button */}
+      <button
+        onClick={onGenerate}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-teal font-extrabold text-white text-sm shadow-vlearn hover:bg-vlearn-teal-dark transition-colors"
+      >
+        <Bot size={18} />
+        Sinh Quiz bằng AI ({questionCount} câu)
+      </button>
+
+      <p className="text-[10px] text-center text-vlearn-muted">
+        Powered by {import.meta.env.VITE_LLM_MODEL || "Llama 3.1"} via OpenRouter
+      </p>
+    </section>
+  );
+}
+
+// ─── Loading Card ─────────────────────────────────────────────────────────────
+function LoadingCard({ lesson, questionCount }) {
+  const [step, setStep] = useState(0);
+  const steps = [
+    "Đọc nội dung bài giảng...",
+    "Phân tích các khái niệm chính...",
+    `Sinh ${questionCount} câu hỏi trắc nghiệm...`,
+    "Tạo giải thích chi tiết...",
+    "Hoàn thiện bộ câu hỏi...",
+  ];
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setStep((s) => (s < steps.length - 1 ? s + 1 : s));
+    }, 1800);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+      <div className="relative">
+        <div className="h-16 w-16 rounded-full bg-vlearn-teal-light flex items-center justify-center">
+          <BrainCircuit size={28} className="text-vlearn-teal" />
+        </div>
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+          className="absolute inset-0 rounded-full border-2 border-transparent border-t-vlearn-teal"
+        />
+      </div>
+      <div>
+        <p className="text-sm font-black text-slate-800 mb-1">AI đang sinh câu hỏi</p>
+        <p className="text-xs text-vlearn-muted max-w-[240px]">{lesson?.title}</p>
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={step}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          className="text-xs font-semibold text-vlearn-teal bg-vlearn-teal-light rounded-full px-4 py-2"
+        >
+          {steps[step]}
+        </motion.p>
+      </AnimatePresence>
+      <div className="flex gap-1 mt-2">
+        {steps.map((_, i) => (
+          <div key={i} className={`h-1.5 w-8 rounded-full transition-colors duration-500 ${
+            i <= step ? "bg-vlearn-teal" : "bg-slate-200"
+          }`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Error Card ───────────────────────────────────────────────────────────────
+function ErrorCard({ message, onRetry }) {
+  return (
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-center space-y-3">
+      <div className="h-12 w-12 rounded-full bg-red-100 text-red-500 grid place-items-center mx-auto">
+        <AlertCircle size={22} />
+      </div>
+      <p className="text-sm font-black text-red-700">Không sinh được câu hỏi</p>
+      <p className="text-xs text-red-600 leading-5">{message}</p>
+      <button
+        onClick={onRetry}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-600 font-bold text-white text-sm hover:bg-red-700 transition-colors"
+      >
+        <RefreshCw size={14} />
+        Thử lại
+      </button>
+    </div>
+  );
+}
+
+// ─── Progress Bar ─────────────────────────────────────────────────────────────
+function ProgressBar({ current, total, answers, questions }) {
+  const correct = answers.filter((a, i) => a === questions[i]?.correct).length;
+  const answered = answers.filter((a) => a !== undefined).length;
+
+  return (
+    <section className="mb-4 rounded-2xl border border-vlearn-line bg-white p-4">
+      <div className="mb-2.5 flex items-center justify-between">
+        <p className="text-sm font-black">Quiz Progress</p>
+        <div className="flex items-center gap-3 text-xs font-bold">
+          {answered > 0 && (
+            <span className="text-emerald-600">{correct} đúng</span>
+          )}
+          <span className="text-vlearn-teal">{current} / {total}</span>
+        </div>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <motion.div
+          className="h-full rounded-full bg-vlearn-teal"
+          animate={{ width: `${(current / total) * 100}%` }}
+          transition={{ duration: 0.3 }}
+        />
+      </div>
+      {/* Dot indicators */}
+      <div className="flex gap-1 mt-3 flex-wrap">
+        {Array.from({ length: total }).map((_, i) => {
+          const ans = answers[i];
+          const isAnswered = ans !== undefined;
+          const isCorrect = isAnswered && ans === questions[i]?.correct;
+          const isCurrent = i === current - 1;
+          return (
+            <div key={i} className={`h-2 w-2 rounded-full transition-colors ${
+              isCurrent ? "bg-vlearn-teal ring-2 ring-vlearn-teal/30"
+              : isCorrect ? "bg-emerald-500"
+              : isAnswered ? "bg-red-400"
+              : "bg-slate-200"
+            }`} />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ─── Question Card ────────────────────────────────────────────────────────────
+function QuestionCard({ question, current, selected, submitted, onSelect }) {
+  const isCorrect = selected === question.correct;
+  const difficultyColor = {
+    easy: "text-emerald-600 bg-emerald-50",
+    medium: "text-amber-600 bg-amber-50",
+    hard: "text-red-600 bg-red-50",
+  }[question.difficulty] || "text-slate-600 bg-slate-50";
+
+  return (
+    <section className="rounded-2xl border border-vlearn-line bg-white p-4">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-bold text-vlearn-teal">Câu {current + 1}</p>
+        <div className="flex items-center gap-2">
+          {question.topic && (
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">
+              {question.topic}
+            </span>
+          )}
+          {question.difficulty && (
+            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${difficultyColor}`}>
+              {question.difficulty === "easy" ? "Dễ" : question.difficulty === "medium" ? "Vừa" : "Khó"}
+            </span>
+          )}
+        </div>
+      </div>
+      <h3 className="text-sm font-black leading-6 mb-4">{question.question}</h3>
+
+      <div className="space-y-2">
+        {question.options.map((option, index) => {
+          const isActive = selected === index;
+          const isCorrectAnswer = submitted && index === question.correct;
+          const isWrong = submitted && isActive && index !== question.correct;
+          return (
+            <motion.button
+              key={index}
+              onClick={() => !submitted && onSelect(index)}
+              whileTap={!submitted ? { scale: 0.98 } : {}}
+              className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors ${
+                isCorrectAnswer ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                : isWrong ? "border-red-300 bg-red-50 text-red-700"
+                : isActive ? "border-vlearn-teal/50 bg-vlearn-teal-light text-vlearn-teal"
+                : submitted ? "border-vlearn-line bg-slate-50 text-slate-500 cursor-default"
+                : "border-vlearn-line bg-white hover:bg-slate-50 text-slate-700 cursor-pointer"
+              }`}
+            >
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px] font-black ${
+                isCorrectAnswer ? "border-emerald-400 bg-emerald-100"
+                : isWrong ? "border-red-400 bg-red-100"
+                : isActive ? "border-vlearn-teal bg-vlearn-teal text-white"
+                : "border-current"
+              }`}>
+                {isCorrectAnswer ? <Check size={10} strokeWidth={3} />
+                : isWrong ? <X size={10} strokeWidth={3} />
+                : String.fromCharCode(65 + index)}
+              </span>
+              <span className="leading-5 flex-1">{option}</span>
+            </motion.button>
           );
         })}
       </div>
 
-      {submitted && (
-        <div className={`mt-5 rounded-2xl border p-4 ${isCorrect ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-          <p className={`font-black ${isCorrect ? "text-emerald-700" : "text-red-700"}`}>
-            {isCorrect ? "Correct" : "Incorrect"}
-          </p>
-          {!isCorrect && (
-            <p className="mt-2 text-sm font-semibold text-vlearn-ink">
-              Correct Answer: {String.fromCharCode(65 + question.correct)}
+      {/* Explanation */}
+      <AnimatePresence>
+        {submitted && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mt-4 rounded-xl border p-3 ${
+              isCorrect ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <p className={`text-xs font-black mb-1 ${isCorrect ? "text-emerald-700" : "text-amber-700"}`}>
+              {isCorrect ? "✓ Chính xác!" : `✗ Chưa đúng — Đáp án: ${String.fromCharCode(65 + question.correct)}`}
             </p>
-          )}
-          <p className="mt-3 text-sm font-black">Explanation</p>
-          <p className="mt-1 text-sm leading-6 text-vlearn-muted">{question.explanation}</p>
-        </div>
-      )}
+            <p className="text-[11px] font-bold text-slate-600 mt-2">Giải thích</p>
+            <p className="text-[11px] leading-5 text-vlearn-muted mt-0.5">{question.explanation}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
 
-function ResultCard({ score, total, onRetry }) {
+// ─── Result Card ──────────────────────────────────────────────────────────────
+function ResultCard({ score, total, questions, answers, lesson, onRetry, onRegenerate }) {
   const accuracy = Math.round((score / total) * 100);
+  const [showReview, setShowReview] = useState(false);
+
+  const grade =
+    accuracy >= 90 ? { label: "Xuất sắc 🏆", color: "text-emerald-600" }
+    : accuracy >= 75 ? { label: "Khá tốt 👍", color: "text-blue-600" }
+    : accuracy >= 60 ? { label: "Trung bình 📚", color: "text-amber-600" }
+    : { label: "Cần ôn thêm 💪", color: "text-red-600" };
+
+  const wrongQuestions = questions.filter((q, i) => answers[i] !== q.correct);
 
   return (
-    <section className="rounded-2xl border border-vlearn-line bg-white p-5 text-center shadow-sm">
-      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-vlearn-soft text-vlearn-blue">
-        <Sparkles size={26} />
-      </div>
-      <h3 className="text-2xl font-black">Quiz Completed</h3>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
-          <p className="text-sm font-bold text-vlearn-muted">Score</p>
-          <p className="mt-2 text-2xl font-black text-vlearn-blue">{score} / {total}</p>
+    <section className="space-y-4">
+      {/* Score summary */}
+      <div className="rounded-2xl border border-vlearn-line bg-white p-5 text-center">
+        <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-vlearn-teal-light text-vlearn-teal">
+          <Trophy size={24} />
         </div>
-        <div className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
-          <p className="text-sm font-bold text-vlearn-muted">Accuracy</p>
-          <p className="mt-2 text-2xl font-black text-vlearn-blue">{accuracy}%</p>
+        <h3 className="text-lg font-black">Hoàn thành Quiz!</h3>
+        <p className={`text-sm font-bold mt-1 ${grade.color}`}>{grade.label}</p>
+
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-vlearn-line bg-slate-50 p-3">
+            <p className="text-[10px] font-bold text-vlearn-muted">Điểm</p>
+            <p className="mt-1 text-xl font-black text-vlearn-teal">{score}/{total}</p>
+          </div>
+          <div className="rounded-xl border border-vlearn-line bg-slate-50 p-3">
+            <p className="text-[10px] font-bold text-vlearn-muted">Accuracy</p>
+            <p className="mt-1 text-xl font-black text-vlearn-teal">{accuracy}%</p>
+          </div>
+          <div className="rounded-xl border border-vlearn-line bg-slate-50 p-3">
+            <p className="text-[10px] font-bold text-vlearn-muted">Sai</p>
+            <p className="mt-1 text-xl font-black text-red-500">{total - score}</p>
+          </div>
+        </div>
+
+        {/* Progress bar kết quả */}
+        <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
+          <motion.div
+            className={`h-full rounded-full ${accuracy >= 75 ? "bg-emerald-500" : accuracy >= 60 ? "bg-amber-500" : "bg-red-500"}`}
+            initial={{ width: 0 }}
+            animate={{ width: `${accuracy}%` }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          />
         </div>
       </div>
-      <div className="mt-5 rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4 text-left">
-        <p className="font-black">Review Weak Topics</p>
-        <ul className="mt-3 space-y-2 text-sm text-vlearn-muted">
-          <li>Attention trong Transformers</li>
-          <li>Retrieval practice sau buổi học</li>
-          <li>Cách đánh giá chất lượng câu hỏi trắc nghiệm</li>
-        </ul>
+
+      {/* Weak topics */}
+      {wrongQuestions.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-xs font-black text-amber-800 mb-2">
+            📌 Chủ đề cần ôn lại ({wrongQuestions.length} câu)
+          </p>
+          <ul className="space-y-1">
+            {[...new Set(wrongQuestions.map((q) => q.topic))].map((t) => (
+              <li key={t} className="text-xs text-amber-700 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Review wrong answers */}
+      {wrongQuestions.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowReview((v) => !v)}
+            className="w-full flex items-center justify-between rounded-xl border border-vlearn-line bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <span>Xem lại câu sai ({wrongQuestions.length})</span>
+            {showReview ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <AnimatePresence>
+            {showReview && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-3 mt-2">
+                  {wrongQuestions.map((q, qi) => {
+                    const origIdx = questions.indexOf(q);
+                    const userAnswer = answers[origIdx];
+                    return (
+                      <div key={q.id} className="rounded-xl border border-red-200 bg-red-50 p-3">
+                        <p className="text-[10px] font-black text-red-600 mb-1">
+                          Câu {origIdx + 1} · {q.topic}
+                        </p>
+                        <p className="text-xs font-bold text-slate-800 mb-2">{q.question}</p>
+                        <p className="text-[10px] text-red-600 mb-1">
+                          Bạn chọn: {userAnswer !== undefined ? `${String.fromCharCode(65 + userAnswer)}. ${q.options[userAnswer]}` : "Chưa trả lời"}
+                        </p>
+                        <p className="text-[10px] text-emerald-700 mb-2">
+                          Đáp án đúng: {String.fromCharCode(65 + q.correct)}. {q.options[q.correct]}
+                        </p>
+                        <p className="text-[10px] text-slate-600 leading-4">{q.explanation}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={onRetry}
+          className="h-10 rounded-xl border border-vlearn-line font-bold text-slate-600 text-sm hover:bg-slate-50 transition-colors"
+        >
+          Làm lại
+        </button>
+        <button
+          onClick={onRegenerate}
+          className="h-10 rounded-xl bg-vlearn-teal font-bold text-white text-sm hover:bg-vlearn-teal-dark transition-colors shadow-vlearn"
+        >
+          Quiz mới
+        </button>
       </div>
-      <button
-        onClick={onRetry}
-        className="mt-5 h-12 w-full rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn"
-      >
-        Retry Quiz
-      </button>
     </section>
   );
 }
 
+// ─── Mount ─────────────────────────────────────────────────────────────────────
 createRoot(document.getElementById("root")).render(<Layout />);
