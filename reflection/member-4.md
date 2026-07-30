@@ -1,8 +1,7 @@
 # Reflection - Member 4
 
 - Họ tên / Mã HV: Nguyễn Hoài Nam — 2A202602016
-- Phần việc đã phụ trách: Phát triển Front-end React SPA (`src/main.jsx`), tích hợp `react-pdf` hiển thị tài liệu dạng cuộn trang liên tục và giao diện Quiz Sidebar hai chế độ.
-- Quyết định quan trọng đã đóng góp: Quyết định chuyển từ chuyển trang PDF thủ công sang cuộn dọc liên tục (continuous vertical scroll) kèm background dạng sổ tay học tập, giúp học viên tra cứu bài giảng nhanh chóng hơn trong khi làm quiz.
-- Điều học được: Quản lý state phức tạp trong React (chuyển đổi qua lại giữa Chat Q&A, Quiz Intro, Active Quiz và Result View) mà vẫn đảm bảo mượt mà. Cách áp dụng Framer Motion để tạo animation chuyển cảnh tinh tế cho trải nghiệm học tập tốt hơn.
-- Điều sẽ làm khác nếu có thêm thời gian: Tối ưu hóa hiệu năng render PDF khi cuộn trang dài bằng virtualized list (React Window) và bổ sung tính năng highlight trực tiếp trên PDF khi AI trích dẫn trang.
-
+- Phần việc đã phụ trách: Xây dựng và hoàn thiện AI Spec cho sản phẩm, mô tả phạm vi, yêu cầu và cách thức hoạt động của các tính năng AI trong hệ thống.
+- Quyết định quan trọng đã đóng góp: Xác định rõ phạm vi và yêu cầu của các tính năng AI, đặc biệt là chatbot Q&A và AI Quiz, giúp nhóm có định hướng thống nhất trong quá trình phát triển sản phẩm.
+- Điều học được: Học được cách chuyển ý tưởng sản phẩm thành đặc tả AI cụ thể, xác định rõ đầu vào, đầu ra và hành vi của AI để hỗ trợ quá trình phát triển và triển khai tính năng.
+- Điều sẽ làm khác nếu có thêm thời gian: Tôi sẽ hoàn thiện AI Spec chi tiết hơn, bổ sung thêm các trường hợp ngoại lệ và tiêu chí đánh giá chất lượng của chatbot và AI Quiz để việc kiểm thử và cải thiện sản phẩm hiệu quả hơn.
