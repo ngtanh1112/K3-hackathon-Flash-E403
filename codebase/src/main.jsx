@@ -38,6 +38,7 @@ import "./styles.css";
 const STORAGE_KEY = "vlearn.materials.v1";
 const TUTOR_CHAT_STORAGE_KEY = "vlearn.tutorChats.v1";
 const QUIZ_SETTINGS_STORAGE_KEY = "vlearn.quizSettings.v1";
+const VISUAL_TRACE_STORAGE_KEY = "vlearn.visualTraces.v1";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 function isTemporaryFileUrl(url) {
@@ -189,6 +190,33 @@ function saveQuizSettings(settings) {
     localStorage.setItem(QUIZ_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // Quiz settings still work in memory.
+  }
+}
+
+function loadVisualTraces() {
+  try {
+    return JSON.parse(localStorage.getItem(VISUAL_TRACE_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function safeTraceForStorage(trace) {
+  const imageDataUrl = trace.imageDataUrl && trace.imageDataUrl.length < 220000 ? trace.imageDataUrl : "";
+  return { ...trace, imageDataUrl };
+}
+
+function saveVisualTraces(tracesByMaterial) {
+  try {
+    const compact = Object.fromEntries(
+      Object.entries(tracesByMaterial).map(([materialId, traces]) => [
+        materialId,
+        traces.slice(-20).map(safeTraceForStorage),
+      ]),
+    );
+    localStorage.setItem(VISUAL_TRACE_STORAGE_KEY, JSON.stringify(compact));
+  } catch {
+    // Trace history still works in memory if storage quota is full.
   }
 }
 
@@ -843,10 +871,11 @@ function Layout() {
   const [pageJumpRequest, setPageJumpRequest] = useState(null);
   const [role, setRole] = useState("student");
   const [query, setQuery] = useState("");
-  const [visualTracesByMaterial, setVisualTracesByMaterial] = useState({});
+  const [visualTracesByMaterial, setVisualTracesByMaterial] = useState(loadVisualTraces);
 
   useEffect(() => saveMaterials(materials), [materials]);
   useEffect(() => saveQuizSettings(quizSettings), [quizSettings]);
+  useEffect(() => saveVisualTraces(visualTracesByMaterial), [visualTracesByMaterial]);
 
   useEffect(() => {
     const pending = materials.filter((item) => item.type === "application/pdf" && item.url && !isTemporaryFileUrl(item.url) && !item.extractedText && !item.extractingText);
@@ -883,7 +912,7 @@ function Layout() {
   function addVisualTrace(materialId, trace) {
     setVisualTracesByMaterial((items) => ({
       ...items,
-      [materialId]: [...(items[materialId] || []), trace],
+      [materialId]: [...(items[materialId] || []), trace].slice(-20),
     }));
   }
 
@@ -1360,6 +1389,7 @@ function PDFViewer({ material, quizOpen, sidePanelWidth = 390, visualTraces, onA
   const [visualAnswer, setVisualAnswer] = useState("");
   const [visualLoading, setVisualLoading] = useState(false);
   const [visualError, setVisualError] = useState("");
+  const [traceHistoryOpen, setTraceHistoryOpen] = useState(false);
   const visualLayerRef = useRef(null);
   const pdfCanvasRef = useRef(null);
   const totalPages = detectedPdfPages || material?.pages || 1;
@@ -1518,7 +1548,13 @@ function PDFViewer({ material, quizOpen, sidePanelWidth = 390, visualTraces, onA
           <ToolbarButton active={tool === "pen"} onClick={() => { setTool("pen"); addNote(); }} icon={<PenLine size={16} />} label="Bút" />
           <ToolbarButton active={highlighted} onClick={() => setHighlighted((value) => !value)} icon={<Highlighter size={16} />} label="Highlight" />
           <ToolbarButton active={tool === "visual"} onClick={() => setTool((value) => value === "visual" ? "read" : "visual")} icon={<ScanSearch size={16} />} label="Visual Explain" />
-          <span className="ml-4 rounded-full bg-vlearn-soft px-4 py-2 text-sm font-extrabold text-vlearn-blue">Trang {page} · {notes.length} note · {visualTraces.length} trace</span>
+          <button
+            type="button"
+            onClick={() => setTraceHistoryOpen((value) => !value)}
+            className="ml-4 rounded-full bg-vlearn-soft px-4 py-2 text-sm font-extrabold text-vlearn-blue hover:bg-white"
+          >
+            Trang {page} · {notes.length} note · {visualTraces.length} trace
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <ToolbarButton onClick={() => setZoom((value) => Math.max(60, value - 10))} icon={<ZoomOut size={16} />} />
@@ -1599,6 +1635,20 @@ function PDFViewer({ material, quizOpen, sidePanelWidth = 390, visualTraces, onA
           question={visualQuestion}
           traceCount={visualTraces.length}
           onClose={clearVisualSelection}
+        />
+      )}
+
+      {traceHistoryOpen && (
+        <VisualTraceHistoryPanel
+          traces={visualTraces}
+          onClose={() => setTraceHistoryOpen(false)}
+          onOpenTrace={(trace) => {
+            setPage(Math.min(Math.max(1, trace.page || 1), totalPages));
+            setVisualQuestion(trace.question || "");
+            setVisualAnswer(trace.answer || "");
+            setVisualError("");
+            setTraceHistoryOpen(false);
+          }}
         />
       )}
 
@@ -1766,6 +1816,56 @@ function VisualExplainPanel({ loading, error, answer, question, traceCount, onCl
           <span className="text-xs font-black uppercase tracking-wide text-vlearn-blue">Quiz personalization</span>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-vlearn-blue">{traceCount} trace saved</span>
         </div>
+      </div>
+    </aside>
+  );
+}
+
+function VisualTraceHistoryPanel({ traces, onOpenTrace, onClose }) {
+  return (
+    <aside className="absolute right-5 top-24 z-40 flex max-h-[calc(100vh-150px)] w-[420px] flex-col overflow-hidden rounded-2xl border border-[#b8d0ea] bg-white shadow-[0_24px_70px_rgba(15,79,147,0.22)]">
+      <div className="flex items-start justify-between gap-3 border-b border-vlearn-line bg-[#f7fbff] px-5 py-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-vlearn-blue">Visual Explain History</p>
+          <h3 className="mt-1 text-lg font-black">Các vùng đã hỏi</h3>
+          <p className="mt-1 text-xs font-semibold text-vlearn-muted">{traces.length} trace được lưu cho tài liệu này</p>
+        </div>
+        <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full border border-vlearn-line bg-white text-vlearn-muted">
+          <X size={15} />
+        </button>
+      </div>
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        {!traces.length && (
+          <div className="rounded-xl border border-vlearn-line bg-[#fbfdff] p-4 text-sm font-semibold leading-6 text-vlearn-muted">
+            Chưa có vùng nào được lưu. Dùng Visual Explain, khoanh một vùng trên slide và đặt câu hỏi để tạo trace.
+          </div>
+        )}
+        {[...traces].reverse().map((trace) => (
+          <article key={trace.id} className="overflow-hidden rounded-2xl border border-vlearn-line bg-[#fbfdff]">
+            {trace.imageDataUrl && (
+              <div className="bg-white p-2">
+                <img src={trace.imageDataUrl} alt="Vùng đã khoanh" className="max-h-36 w-full rounded-xl border border-vlearn-line object-contain" />
+              </div>
+            )}
+            <div className="p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="rounded-full bg-vlearn-soft px-3 py-1 text-xs font-black text-vlearn-blue">Trang {trace.page}</span>
+                <span className="text-xs font-semibold text-vlearn-muted">{trace.createdAt ? formatDate(trace.createdAt) : ""}</span>
+              </div>
+              <p className="font-black leading-6 text-vlearn-ink">{trace.question}</p>
+              <div className="mt-2 line-clamp-4 text-sm leading-6 text-vlearn-muted">
+                <MarkdownContent content={trace.answer} />
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenTrace(trace)}
+                className="mt-3 h-10 w-full rounded-xl bg-vlearn-blue text-sm font-black text-white"
+              >
+                Xem lại trace này
+              </button>
+            </div>
+          </article>
+        ))}
       </div>
     </aside>
   );
