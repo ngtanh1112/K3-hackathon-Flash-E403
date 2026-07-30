@@ -37,35 +37,39 @@ import "./styles.css";
 
 const STORAGE_KEY = "vlearn.materials.v1";
 const TUTOR_CHAT_STORAGE_KEY = "vlearn.tutorChats.v1";
+const QUIZ_SETTINGS_STORAGE_KEY = "vlearn.quizSettings.v1";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 function isTemporaryFileUrl(url) {
   return typeof url === "string" && (url.startsWith("data:") || url.startsWith("blob:"));
 }
 
+const builtinMaterialIds = new Set(["public-ai-llm-foundation", "public-problem-discovery"]);
+const legacyDefaultMaterialIds = new Set(["day01-ai-foundation", "day01-retrieval-practice", "day02-prompting"]);
+
 const defaultMaterials = [
   {
-    id: "day01-ai-foundation",
+    id: "public-ai-llm-foundation",
     day: "Day 1",
-    name: "day01_302.pdf",
+    name: "AI LLM foundation.pdf",
     pages: 83,
     type: "application/pdf",
-    url: "/demo-slides.pdf",
+    url: encodeURI("/AI LLM foundation.pdf"),
     uploadedBy: "VLearn",
     uploadedAt: "2026-07-30T00:00:00.000Z",
     description: "AI & LLM Foundation",
     notes: "Attention, Transformer, prompt, retrieval practice, đánh giá câu hỏi trắc nghiệm.",
   },
   {
-    id: "day01-retrieval-practice",
-    day: "Day 1",
-    name: "material_retrieval_practice.pdf",
-    pages: 32,
+    id: "public-problem-discovery",
+    day: "Day 2",
+    name: "X\u00e1c \u0111\u1ecbnh b\u00e0i to\u00e1n cho AI.pdf",
+    pages: 29,
     type: "application/pdf",
-    url: "",
-    uploadedBy: "Mentor",
+    url: "/X%C3%A1c%20%C4%91%E1%BB%8Bnh%20b%C3%A0i%20to%C3%A1n%20cho%20AI.pdf",
+    uploadedBy: "VLearn",
     uploadedAt: "2026-07-30T00:00:00.000Z",
-    description: "Retrieval Practice",
+    description: "X\u00e1c \u0111\u1ecbnh b\u00e0i to\u00e1n cho AI",
     notes: "Ôn tập chủ động giúp học viên nhớ lâu hơn so với chỉ đọc lại slide.",
   },
   {
@@ -82,6 +86,19 @@ const defaultMaterials = [
   },
 ];
 
+function mergeDefaultMaterials(savedMaterials = []) {
+  const savedById = new Map(savedMaterials.map((item) => [item.id, item]));
+  const availableDefaults = defaultMaterials.filter((item) => item.url);
+  const mergedDefaults = availableDefaults.map((item) => ({
+    ...item,
+    ...(savedById.get(item.id) || {}),
+    url: item.url,
+    needsReupload: false,
+  }));
+  const customMaterials = savedMaterials.filter((item) => !builtinMaterialIds.has(item.id) && !legacyDefaultMaterialIds.has(item.id));
+  return [...mergedDefaults, ...customMaterials];
+}
+
 function loadMaterials() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -90,9 +107,9 @@ function loadMaterials() {
       url: isTemporaryFileUrl(item.url) ? "" : item.url,
       needsReupload: Boolean(isTemporaryFileUrl(item.url)),
     }));
-    return normalized.length ? normalized : defaultMaterials;
+    return mergeDefaultMaterials(normalized);
   } catch {
-    return defaultMaterials;
+    return mergeDefaultMaterials();
   }
 }
 
@@ -153,23 +170,120 @@ function saveTutorChats(materialId, state) {
   }
 }
 
+const defaultQuizSettings = {
+  easy: 40,
+  medium: 40,
+  hard: 20,
+};
+
+function loadQuizSettings() {
+  try {
+    return { ...defaultQuizSettings, ...JSON.parse(localStorage.getItem(QUIZ_SETTINGS_STORAGE_KEY) || "{}") };
+  } catch {
+    return defaultQuizSettings;
+  }
+}
+
+function saveQuizSettings(settings) {
+  try {
+    localStorage.setItem(QUIZ_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Quiz settings still work in memory.
+  }
+}
+
 function formatDate(value) {
   return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
-function normalizeQuizQuestions(items, limit = 20) {
+function getPageSections(text = "") {
+  const matches = [...String(text).matchAll(/Trang\s+(\d+):\s*([\s\S]*?)(?=Trang\s+\d+:|$)/gi)];
+  return matches
+    .map((match) => ({ page: Number(match[1]), text: match[2].trim() }))
+    .filter((item) => item.page && item.text);
+}
+
+function tokenizeForMatch(value = "") {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 4);
+}
+
+function findBestSourcePage(material, question) {
+  const sections = getPageSections(material?.extractedText || getMaterialQuizContext(material));
+  if (!sections.length) return Number(question?.visualTrace?.page || question?.sourcePage || 1) || 1;
+  const correctOption = question?.options?.[question.correct] || "";
+  const queryTokens = new Set(tokenizeForMatch(`${question?.question || ""} ${correctOption} ${question?.explanation || ""}`));
+  let best = { page: sections[0].page, score: 0 };
+  for (const section of sections) {
+    const pageTokens = new Set(tokenizeForMatch(section.text));
+    let score = 0;
+    queryTokens.forEach((token) => {
+      if (pageTokens.has(token)) score += 1;
+    });
+    if (correctOption && section.text.toLowerCase().includes(correctOption.toLowerCase())) score += 8;
+    if (score > best.score) best = { page: section.page, score };
+  }
+  return best.page;
+}
+
+function repairCitationText(content, fallbackPage = 1, forcePage = false) {
+  const page = Math.max(1, Number(fallbackPage) || 1);
+  let repaired = String(content || "")
+    .replace(/\[Trang\s*(?:xx|x|\?+)\]/gi, `[Trang ${page}]`)
+    .replace(/\[Page\s*(?:xx|x|\?+)\]/gi, `[Trang ${page}]`)
+    .trim();
+  if (forcePage) {
+    repaired = repaired.replace(/\[Trang\s+\d+\]/gi, `[Trang ${page}]`);
+  }
+  return /\[Trang\s+\d+\]/i.test(repaired) ? repaired : `${repaired} [Trang ${page}]`;
+}
+
+function cleanQuizText(value = "") {
+  return String(value)
+    .replace(/\b(?:[A-ZĐ]\s){3,}[A-ZĐ]\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/\b(?:[A-ZĐ]\s){2,}[a-zà-ỹ]/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function hasBadQuizFormatting(value = "") {
+  const text = String(value);
+  return /(?:[A-ZĐ]\s){4,}/.test(text) || text.length < 8;
+}
+
+function normalizeQuizQuestions(items, limit = 20, material = null) {
   if (!Array.isArray(items)) return [];
   return items
     .filter((item) => item?.question && Array.isArray(item?.options) && item.options.length === 4)
-    .map((item) => ({
-      question: String(item.question),
-      options: item.options.map(String),
-      correct: Number.isInteger(item.correct) ? Math.min(Math.max(item.correct, 0), 3) : 0,
-      explanation: String(item.explanation || "Ôn lại nội dung slide liên quan đến câu hỏi này."),
-      personalized: Boolean(item.personalized),
-      sourceLabel: item.sourceLabel ? String(item.sourceLabel) : "",
-      visualTrace: item.visualTrace || null,
-    }))
+    .map((item) => {
+      const questionText = cleanQuizText(item.question);
+      const optionTexts = item.options.map((option) => cleanQuizText(option));
+      const explanationText = cleanQuizText(item.explanation || "Ôn lại nội dung slide liên quan đến câu hỏi này.");
+      const normalized = {
+        question: questionText,
+        options: optionTexts,
+        correct: Number.isInteger(item.correct) ? Math.min(Math.max(item.correct, 0), 3) : 0,
+        explanation: explanationText,
+        personalized: Boolean(item.personalized),
+        sourceLabel: item.sourceLabel ? String(item.sourceLabel) : "",
+        sourcePage: Number(item.sourcePage || item.page || item.visualTrace?.page || 0) || 0,
+        difficulty: ["easy", "medium", "hard"].includes(item.difficulty) ? item.difficulty : "medium",
+        visualTrace: item.visualTrace || null,
+      };
+      const sourcePage = normalized.visualTrace?.page || findBestSourcePage(material, normalized) || normalized.sourcePage || 1;
+      return {
+        ...normalized,
+        sourcePage,
+        explanation: repairCitationText(normalized.explanation, sourcePage, true),
+      };
+    })
+    .filter((item) => item.question && item.options.every((option) => option && !hasBadQuizFormatting(option)))
     .slice(0, limit);
 }
 
@@ -221,6 +335,47 @@ function attachTracePreview(material, questions) {
   ));
 }
 
+function suggestQuestionCount(material) {
+  const pages = Number(material?.pages) || 1;
+  const contextWords = getMaterialQuizContext(material).split(/\s+/).filter(Boolean).length;
+  if (pages <= 12 && contextWords < 1800) return 5;
+  if (pages <= 35 && contextWords < 5000) return 10;
+  if (pages <= 80 && contextWords < 11000) return 15;
+  return 20;
+}
+
+function buildDifficultyPlan(count, settings = defaultQuizSettings) {
+  const total = Math.max(1, Number(settings.easy || 0) + Number(settings.medium || 0) + Number(settings.hard || 0));
+  const raw = {
+    easy: (count * Number(settings.easy || 0)) / total,
+    medium: (count * Number(settings.medium || 0)) / total,
+    hard: (count * Number(settings.hard || 0)) / total,
+  };
+  const plan = {
+    easy: Math.floor(raw.easy),
+    medium: Math.floor(raw.medium),
+    hard: Math.floor(raw.hard),
+  };
+  let remaining = count - plan.easy - plan.medium - plan.hard;
+  ["medium", "easy", "hard"]
+    .sort((a, b) => (raw[b] - Math.floor(raw[b])) - (raw[a] - Math.floor(raw[a])))
+    .forEach((level) => {
+      if (remaining > 0) {
+        plan[level] += 1;
+        remaining -= 1;
+      }
+    });
+  return {
+    ...plan,
+    summary: `${plan.easy} dễ, ${plan.medium} trung bình, ${plan.hard} khó`,
+    lines: [
+      `easy: ${plan.easy} câu - kiểm tra nhận biết khái niệm và ý chính trong Agenda`,
+      `medium: ${plan.medium} câu - kiểm tra giải thích, so sánh, liên hệ giữa các phần`,
+      `hard: ${plan.hard} câu - kiểm tra áp dụng, phát hiện hiểu sai, tình huống chuyển giao`,
+    ],
+  };
+}
+
 function makeMultipleChoice(correctText, wrongOptions) {
   const correctIndex = Math.floor(Math.random() * 4);
   const options = [...wrongOptions.slice(0, 3)];
@@ -241,7 +396,7 @@ function getAgendaFocus(text) {
   return agendaLike.slice(0, 12).join("\n");
 }
 
-function makeContentFallbackQuestions(material, count = 5, previousQuestions = []) {
+function makeContentFallbackQuestions(material, count = 5, previousQuestions = [], quizSettings = defaultQuizSettings) {
   const context = getMaterialQuizContext(material);
   const sentences = getImportantSentences(context);
   const traceBased = (material?.visualTraces || [])
@@ -291,23 +446,37 @@ function makeContentFallbackQuestions(material, count = 5, previousQuestions = [
     "Một kết luận không có căn cứ trong slide",
   ];
 
-  return (candidates.length ? candidates : shuffleItems(fallbackCandidates)).slice(0, count).map((candidate) => {
-    const compact = candidate.text.replace(/^Trang\s+\d+:\s*/i, "").trim();
+  const difficultyPlan = buildDifficultyPlan(count, quizSettings);
+  const difficultyQueue = [
+    ...Array(difficultyPlan.easy).fill("easy"),
+    ...Array(difficultyPlan.medium).fill("medium"),
+    ...Array(difficultyPlan.hard).fill("hard"),
+  ];
+
+  const sourcePool = candidates.length ? candidates : shuffleItems(fallbackCandidates);
+  const selectedCandidates = Array.from({ length: count }, (_, index) => sourcePool[index % sourcePool.length]);
+
+  return selectedCandidates.map((candidate, index) => {
+    const compact = cleanQuizText(candidate.text.replace(/^Trang\s+\d+:\s*/i, "").trim());
+    const safeCorrect = compact.length >= 12 && !hasBadQuizFormatting(compact)
+      ? compact
+      : cleanQuizText(material?.description || material?.name || "Nội dung trọng tâm của slide");
     const questionText = candidate.personalized
       ? pickRandom([
           "Từ vùng bạn đã khoanh bằng Visual Explain, ý nào cần được ôn lại?",
           "Vùng Visual Explain trước đó liên quan nhất đến ý nào?",
           "Câu nào tóm tắt đúng nhất vùng bạn từng hỏi Tutor?",
         ])
-      : pickRandom(templates)(compact.slice(0, 56));
-    const choice = makeMultipleChoice(compact, shuffleItems(wrongOptions));
+      : pickRandom(templates)(safeCorrect.slice(0, 56));
+    const choice = makeMultipleChoice(safeCorrect, shuffleItems(wrongOptions).map(cleanQuizText));
     return {
       question: questionText,
       options: choice.options,
       correct: choice.correct,
-      explanation: `Câu này được tạo từ đoạn trích trong slide: "${compact.slice(0, 140)}${compact.length > 140 ? "..." : ""}" [Trang 1]`,
+      explanation: `Câu này được tạo từ đoạn trích trong slide: "${safeCorrect.slice(0, 140)}${safeCorrect.length > 140 ? "..." : ""}" [Trang 1]`,
       personalized: candidate.personalized,
       sourceLabel: candidate.personalized ? "Visual Explain trace" : "Agenda / slide",
+      difficulty: difficultyQueue[index] || "medium",
       visualTrace: candidate.personalized ? makeTracePreview(candidate.trace) : null,
     };
   });
@@ -337,6 +506,33 @@ function ensureTraceQuestion(material, questions) {
   return [...traceQuestion, ...questions].slice(0, Math.max(questions.length, 5));
 }
 
+function completeQuizQuestions(material, questions, targetCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
+  let next = questions.slice(0, targetCount);
+  const seen = new Set(next.map((item) => item.question.toLowerCase()));
+  let guard = 0;
+  while (next.length < targetCount && guard < 4) {
+    const fallback = normalizeQuizQuestions(
+      makeContentFallbackQuestions(
+        material,
+        targetCount - next.length,
+        [...previousQuestions, ...next.map((item) => item.question)],
+        quizSettings,
+      ),
+      targetCount - next.length,
+      material,
+    );
+    fallback.forEach((item) => {
+      const key = item.question.toLowerCase();
+      if (next.length < targetCount && (!seen.has(key) || guard >= 2)) {
+        next.push(item);
+        seen.add(key);
+      }
+    });
+    guard += 1;
+  }
+  return next.slice(0, targetCount);
+}
+
 function cleanExtractedText(value) {
   return value
     .replace(/\s+/g, " ")
@@ -347,6 +543,15 @@ function cleanExtractedText(value) {
 async function extractPdfText(file) {
   const data = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data }).promise;
+  return extractPdfDocumentText(pdf);
+}
+
+async function extractPdfTextFromUrl(url) {
+  const pdf = await pdfjsLib.getDocument({ url }).promise;
+  return extractPdfDocumentText(pdf);
+}
+
+async function extractPdfDocumentText(pdf) {
   const pages = [];
   for (let index = 1; index <= pdf.numPages; index += 1) {
     const page = await pdf.getPage(index);
@@ -389,10 +594,10 @@ async function extractSlideText(file) {
 }
 
 function getMaterialQuizContext(material) {
-  const explicitNotes = material?.notes?.trim();
-  if (explicitNotes) return explicitNotes;
   const extractedText = material?.extractedText?.trim();
   if (extractedText) return extractedText;
+  const explicitNotes = material?.notes?.trim();
+  if (explicitNotes) return explicitNotes;
   return [
     `Tài liệu được admin upload: ${material?.name || "slide"}.`,
     `Buổi học: ${material?.day || "chưa xác định"}.`,
@@ -423,10 +628,21 @@ async function createVisualExplanation(material, selection, question, selectedIm
   }
 
   const prompt = [
+    "Bạn là VLearn Tutor, trợ lý học tập trong VLearn.",
+    "Bài toán bạn giải quyết: giúp người học hiểu nội dung trong slide bài giảng đang mở, trả lời câu hỏi về khái niệm, hình/diagram, ví dụ, điểm cần nhớ và định hướng ôn tập dựa trên học liệu.",
+    "Constraints bắt buộc:",
+    "- Chỉ trả lời trong phạm vi slide/tài liệu bài học đang mở và Visual Trace được cung cấp.",
+    "- Không bịa kiến thức ngoài slide. Nếu tài liệu không đủ căn cứ, nói rõ là không đủ căn cứ.",
+    "- Không làm bài hộ, không đưa đáp án kiểm tra/assignment nếu yêu cầu không nhằm mục tiêu học hiểu.",
+    "- Không trả lời các yêu cầu ngoài phạm vi học liệu VLearn, ví dụ: viết code không liên quan đến slide, tư vấn đời sống, nội dung nhạy cảm, hoặc câu hỏi không có căn cứ trong tài liệu.",
+    "- Nếu người học hỏi ngoài phạm vi, từ chối ngắn gọn và hướng họ hỏi lại về slide hiện tại.",
+    "- Nếu câu hỏi liên quan đến bài học, luôn chèn citation dạng [Trang 15] với số trang cụ thể ngay sau ý có căn cứ.",
+    "- Được dùng Markdown gọn: bullet, **bold**, bảng nhỏ, code inline nếu chính slide có code. Không tạo code block dài trừ khi slide đang dạy đúng nội dung đó.",
     "Bạn là VLearn Visual Explain.",
     "Nhiệm vụ: giải thích vùng người học vừa khoanh trên slide, trong ngữ cảnh toàn bộ tài liệu bài giảng.",
     "Quan trọng: nếu có ảnh vùng khoanh, hãy ưu tiên đọc và giải thích chính ảnh đó, sau đó liên hệ với NỘI DUNG SLIDE. Không bịa nội dung ngoài ảnh/text được cung cấp.",
-    "Trả lời tiếng Việt, ngắn gọn, theo 3 mục: Vùng này là gì, Dụng ý trong bài, Cần ghi nhớ.",
+    "Trả lời trực tiếp đúng câu hỏi người học chọn/nhập. Không bắt buộc chia thành các mục cố định như 'Vùng này là gì', 'Dụng ý trong bài', 'Cần ghi nhớ'.",
+    "Nếu người học hỏi 'hình này muốn nói gì' thì giải thích thông điệp chính của hình; nếu hỏi ví dụ thì cho ví dụ; nếu hỏi ghi nhớ gì thì chỉ nêu các ý cần nhớ.",
     `Tên tài liệu: ${material?.name}`,
     `Mô tả: ${material?.description}`,
     `Trang đang xem: ${selection.page}`,
@@ -465,7 +681,7 @@ async function createVisualExplanation(material, selection, question, selectedIm
   return answer;
 }
 
-async function createQuizWithAI(material, questionCount, previousQuestions = []) {
+async function createQuizWithAI(material, questionCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   const model = import.meta.env.VITE_OPENAI_MODEL || "gpt-4o-mini";
   if (!apiKey) {
@@ -483,6 +699,7 @@ async function createQuizWithAI(material, questionCount, previousQuestions = [])
     "example-transfer",
   ]);
   const agendaFocus = getAgendaFocus(getMaterialQuizContext(material));
+  const difficultyPlan = buildDifficultyPlan(questionCount, quizSettings);
   const prompt = [
     "Bạn là trợ lý tạo quiz cho VLearn.",
     `Tạo ${questionCount} câu hỏi trắc nghiệm tiếng Việt từ đúng nội dung học liệu sau.`,
@@ -492,6 +709,9 @@ async function createQuizWithAI(material, questionCount, previousQuestions = [])
     "- Ưu tiên mạnh phần AGENDA / mục tiêu / nội dung chính của buổi học. Mỗi câu nên bám một mục agenda khác nhau nếu có thể.",
     "- Nếu có VISUAL TRACE, bắt buộc ít nhất 1 câu hỏi phải xoay quanh vùng người học từng khoanh hỏi.",
     "- Với câu hỏi từ VISUAL TRACE, đặt personalized=true và sourceLabel=\"Visual Explain trace\".",
+    "- Mỗi câu hỏi phải bám đúng mục tiêu Agenda của bài học, có tính sư phạm cao, giúp người học hiểu bản chất thay vì học mẹo.",
+    "- Bộ quiz phải phủ kiến thức cốt lõi của slide: Agenda, khái niệm nền, quan hệ giữa các thành phần, quy trình/cách áp dụng và lỗi hiểu sai thường gặp.",
+    `- Phân bổ độ khó theo cấu hình Admin: ${difficultyPlan.summary}. Trả field difficulty là \"easy\", \"medium\" hoặc \"hard\" cho từng câu.`,
     "- Không lặp lại câu hỏi nằm trong DANH SÁCH CÂU HỎI ĐÃ TẠO TRƯỚC ĐÓ.",
     "- Không chỉ đổi thứ tự đáp án; phải đổi trọng tâm câu hỏi, cách hỏi hoặc phần kiến thức được kiểm tra.",
     "- Nếu lịch sử đã có câu hỏi tương tự, hãy chọn mục Agenda khác hoặc đổi sang tình huống ứng dụng/sai lầm thường gặp.",
@@ -499,13 +719,14 @@ async function createQuizWithAI(material, questionCount, previousQuestions = [])
     `- Lần generate này dùng VARIANT MODE: ${variantMode}. Hãy làm câu hỏi đúng tinh thần mode này.`,
     "- Nếu nội dung slide quá ít, trả về câu hỏi về chính phần ít đó, không bịa thêm.",
     "Mỗi câu có đúng 4 lựa chọn, một đáp án đúng, giải thích ngắn và trích đúng ý từ slide.",
-    "- Explanation bắt buộc có citation dạng [Trang xx] chỉ ra slide/trang chứa căn cứ cho đáp án. Nếu căn cứ nằm ở trang hiện tại hoặc không chắc, dùng trang liên quan nhất trong tài liệu.",
-    "Chỉ trả JSON hợp lệ theo schema: {\"questions\":[{\"question\":\"...\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correct\":0,\"explanation\":\"...\",\"personalized\":false,\"sourceLabel\":\"Agenda / slide\"}]}",
+    "- Explanation bắt buộc có citation dạng [Trang 15] với SỐ TRANG CỤ THỂ chỉ ra slide/trang chứa căn cứ cho đáp án. Citation phải khớp trang có nội dung làm căn cứ, không chọn bừa theo trang đang mở. Tuyệt đối không dùng placeholder [Trang xx], [Trang x] hoặc [Page xx].",
+    "Chỉ trả JSON hợp lệ theo schema: {\"questions\":[{\"question\":\"...\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correct\":0,\"explanation\":\"... [Trang 15]\",\"sourcePage\":15,\"difficulty\":\"easy\",\"personalized\":false,\"sourceLabel\":\"Agenda / slide\"}]}",
     `Tên tài liệu: ${material.name}`,
     `Mô tả: ${material.description}`,
     `SEED ĐỂ ĐA DẠNG HÓA: ${quizSeed}`,
     `VARIANT MODE: ${variantMode}`,
     `AGENDA / TRỌNG TÂM ƯU TIÊN:\n${agendaFocus || "Không tìm thấy agenda rõ ràng, hãy suy ra từ tiêu đề và các bullet chính."}`,
+    `KẾ HOẠCH ĐỘ KHÓ:\n${difficultyPlan.lines.join("\n")}`,
     `DANH SÁCH CÂU HỎI ĐÃ TẠO TRƯỚC ĐÓ:\n${previousQuestions.length ? previousQuestions.join("\n") : "Chưa có."}`,
     `NỘI DUNG SLIDE:\n${getMaterialQuizContext(material)}`,
     `VISUAL TRACE CỦA NGƯỜI HỌC:\n${getVisualTraceContext(material.visualTraces)}`,
@@ -534,7 +755,13 @@ async function createQuizWithAI(material, questionCount, previousQuestions = [])
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || "{}";
   const parsed = JSON.parse(content);
-  const questions = attachTracePreview(material, ensureTraceQuestion(material, normalizeQuizQuestions(parsed.questions, questionCount))).slice(0, questionCount);
+  const questions = completeQuizQuestions(
+    material,
+    attachTracePreview(material, ensureTraceQuestion(material, normalizeQuizQuestions(parsed.questions, questionCount, material))),
+    questionCount,
+    previousQuestions,
+    quizSettings,
+  );
   if (!questions.length) throw new Error("AI không trả về bộ câu hỏi hợp lệ");
   return questions;
 }
@@ -609,6 +836,9 @@ function Layout() {
   const [activeId, setActiveId] = useState(materials[0]?.id);
   const [quizOpen, setQuizOpen] = useState(false);
   const [tutorOpen, setTutorOpen] = useState(false);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(400);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(390);
+  const [quizSettings, setQuizSettings] = useState(loadQuizSettings);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageJumpRequest, setPageJumpRequest] = useState(null);
   const [role, setRole] = useState("student");
@@ -616,6 +846,21 @@ function Layout() {
   const [visualTracesByMaterial, setVisualTracesByMaterial] = useState({});
 
   useEffect(() => saveMaterials(materials), [materials]);
+  useEffect(() => saveQuizSettings(quizSettings), [quizSettings]);
+
+  useEffect(() => {
+    const pending = materials.filter((item) => item.type === "application/pdf" && item.url && !isTemporaryFileUrl(item.url) && !item.extractedText && !item.extractingText);
+    if (!pending.length) return;
+    pending.forEach(async (item) => {
+      setMaterials((items) => items.map((material) => material.id === item.id ? { ...material, extractingText: true } : material));
+      try {
+        const extractedText = await extractPdfTextFromUrl(item.url);
+        setMaterials((items) => items.map((material) => material.id === item.id ? { ...material, extractedText, extractingText: false } : material));
+      } catch {
+        setMaterials((items) => items.map((material) => material.id === item.id ? { ...material, extractingText: false } : material));
+      }
+    });
+  }, [materials]);
 
   const activeMaterial = materials.find((item) => item.id === activeId) || materials[0];
   const activeVisualTraces = visualTracesByMaterial[activeMaterial?.id] || [];
@@ -642,6 +887,36 @@ function Layout() {
     }));
   }
 
+  function beginResize(panel, event) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = panel === "left" ? leftSidebarWidth : rightSidebarWidth;
+
+    function handleMove(moveEvent) {
+      const delta = panel === "left" ? moveEvent.clientX - startX : startX - moveEvent.clientX;
+      const min = panel === "left" ? 300 : 340;
+      const max = panel === "left" ? 560 : 680;
+      const nextWidth = Math.min(max, Math.max(min, startWidth + delta));
+      if (panel === "left") {
+        setLeftSidebarWidth(nextWidth);
+      } else {
+        setRightSidebarWidth(nextWidth);
+      }
+    }
+
+    function handleUp() {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-[#f3f7fb] text-vlearn-ink">
       <Header role={role} onRoleChange={setRole} material={activeMaterial} />
@@ -649,6 +924,8 @@ function Layout() {
         <LeftSidebar
           materials={materials}
           activeId={activeMaterial?.id}
+          width={leftSidebarWidth}
+          onResizeStart={(event) => beginResize("left", event)}
           onSelect={setActiveId}
           role={role}
           query={query}
@@ -657,12 +934,13 @@ function Layout() {
         />
         <main className="relative flex min-w-0 flex-1">
           {role === "admin" ? (
-            <AdminPanel onUpload={addMaterial} materials={materials} />
+            <AdminPanel onUpload={addMaterial} materials={materials} quizSettings={quizSettings} onQuizSettingsChange={setQuizSettings} />
           ) : (
             <>
               <PDFViewer
                 material={activeMaterialWithTraces}
                 quizOpen={quizOpen || tutorOpen}
+                sidePanelWidth={rightSidebarWidth}
                 visualTraces={activeVisualTraces}
                 onAddVisualTrace={(trace) => addVisualTrace(activeMaterial.id, trace)}
                 onPageChange={setCurrentPage}
@@ -674,6 +952,9 @@ function Layout() {
                 {quizOpen && (
                   <QuizSidebar
                     material={activeMaterialWithTraces}
+                    quizSettings={quizSettings}
+                    width={rightSidebarWidth}
+                    onResizeStart={(event) => beginResize("right", event)}
                     onJumpPage={(pageNumber) => setPageJumpRequest({ page: pageNumber, id: Date.now() })}
                     onClose={() => setQuizOpen(false)}
                   />
@@ -682,6 +963,8 @@ function Layout() {
                   <TutorSidebar
                     material={activeMaterialWithTraces}
                     page={currentPage}
+                    width={rightSidebarWidth}
+                    onResizeStart={(event) => beginResize("right", event)}
                     onJumpPage={(pageNumber) => setPageJumpRequest({ page: pageNumber, id: Date.now() })}
                     onClose={() => setTutorOpen(false)}
                   />
@@ -748,7 +1031,7 @@ function Header({ role, onRoleChange, material }) {
   );
 }
 
-function LeftSidebar({ materials, activeId, onSelect, role, query, onQueryChange, onDelete }) {
+function LeftSidebar({ materials, activeId, width, onResizeStart, onSelect, role, query, onQueryChange, onDelete }) {
   const filtered = materials.filter((item) => `${item.name} ${item.day} ${item.description}`.toLowerCase().includes(query.toLowerCase()));
   const grouped = filtered.reduce((acc, item) => {
     acc[item.day] = [...(acc[item.day] || []), item];
@@ -756,7 +1039,12 @@ function LeftSidebar({ materials, activeId, onSelect, role, query, onQueryChange
   }, {});
 
   return (
-    <aside className="h-full w-[400px] shrink-0 overflow-y-auto border-r border-vlearn-line bg-white px-6 py-7">
+    <aside className="relative h-full shrink-0 overflow-y-auto border-r border-vlearn-line bg-white px-6 py-7" style={{ width }}>
+      <div
+        onMouseDown={onResizeStart}
+        className="absolute right-0 top-0 z-20 h-full w-2 cursor-ew-resize border-r border-transparent hover:border-vlearn-blue/50 hover:bg-vlearn-blue/10"
+        title="Kéo để đổi độ rộng sidebar"
+      />
       <div className="mb-6 flex gap-3">
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-vlearn-line bg-vlearn-soft text-vlearn-blue">
           <BookOpen size={22} />
@@ -838,7 +1126,7 @@ function DayCard({ title, subtitle, open = false, children }) {
   );
 }
 
-function AdminPanel({ onUpload, materials }) {
+function AdminPanel({ onUpload, materials, quizSettings, onQuizSettingsChange }) {
   const [day, setDay] = useState("Day 1");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
@@ -851,6 +1139,13 @@ function AdminPanel({ onUpload, materials }) {
   const [pages, setPages] = useState(1);
   const [message, setMessage] = useState("");
   const fileRef = useRef(null);
+
+  function updateQuizSetting(key, value) {
+    onQuizSettingsChange((settings) => ({
+      ...settings,
+      [key]: Math.max(0, Math.min(100, Number(value) || 0)),
+    }));
+  }
 
   async function handleFile(event) {
     const file = event.target.files?.[0];
@@ -974,6 +1269,43 @@ function AdminPanel({ onUpload, materials }) {
             />
           </Field>
 
+          <div className="mt-4 rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="font-black text-vlearn-blue">Phân bổ độ khó quiz</p>
+                <p className="mt-1 text-xs font-semibold text-vlearn-muted">Admin quy định tỉ lệ, hệ thống tự quy đổi theo số câu 5/10/15/20.</p>
+              </div>
+              <span className="rounded-full bg-vlearn-soft px-3 py-1 text-xs font-black text-vlearn-blue">
+                {quizSettings.easy}/{quizSettings.medium}/{quizSettings.hard}
+              </span>
+            </div>
+            {[
+              ["easy", "Dễ"],
+              ["medium", "Trung bình"],
+              ["hard", "Khó"],
+            ].map(([key, label]) => (
+              <label key={key} className="mb-3 grid grid-cols-[90px_1fr_52px] items-center gap-3 text-sm font-bold text-vlearn-muted">
+                <span>{label}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={quizSettings[key]}
+                  onChange={(event) => updateQuizSetting(key, event.target.value)}
+                  className="accent-vlearn-blue"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={quizSettings[key]}
+                  onChange={(event) => updateQuizSetting(key, event.target.value)}
+                  className="h-9 rounded-lg border border-vlearn-line bg-white px-2 text-right text-sm font-black text-vlearn-blue outline-none"
+                />
+              </label>
+            ))}
+          </div>
+
           <button disabled={isExtracting} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn disabled:bg-[#b9c8d9]">
             <Upload size={18} />
             {isExtracting ? "Đang đọc slide..." : "Upload slide"}
@@ -1015,7 +1347,7 @@ const quickVisualQuestions = [
   "Cho tôi một ví dụ",
 ];
 
-function PDFViewer({ material, quizOpen, visualTraces, onAddVisualTrace, onPageChange, pageJumpRequest }) {
+function PDFViewer({ material, quizOpen, sidePanelWidth = 390, visualTraces, onAddVisualTrace, onPageChange, pageJumpRequest }) {
   const [zoom, setZoom] = useState(100);
   const [page, setPage] = useState(1);
   const [detectedPdfPages, setDetectedPdfPages] = useState(null);
@@ -1179,7 +1511,7 @@ function PDFViewer({ material, quizOpen, visualTraces, onAddVisualTrace, onPageC
   }
 
   return (
-    <section className={`relative min-w-0 flex-1 overflow-hidden transition-all duration-300 ${quizOpen ? "mr-[390px]" : "mr-0"}`}>
+    <section className="relative min-w-0 flex-1 overflow-hidden transition-all duration-300" style={{ marginRight: quizOpen ? sidePanelWidth : 0 }}>
       <div className="absolute left-6 right-6 top-5 z-10 flex items-center justify-between rounded-2xl border border-vlearn-line bg-white/95 px-4 py-3 shadow-vlearn backdrop-blur">
         <div className="flex items-center gap-2">
           <ToolbarButton active={tool === "read"} onClick={() => setTool("read")} icon={<Send size={16} />} label="Đọc" />
@@ -1200,8 +1532,8 @@ function PDFViewer({ material, quizOpen, visualTraces, onAddVisualTrace, onPageC
         </div>
       </div>
 
-      <div className="h-full overflow-y-auto bg-[#eaf1f8] px-8 pb-28 pt-32">
-        <div className="relative mx-auto max-w-[1050px]" style={{ width: `${zoom}%` }}>
+      <div className={`h-full overflow-y-auto bg-[#eaf1f8] pb-28 pt-32 ${quizOpen ? "px-3" : "px-8"}`}>
+        <div className="relative mx-auto" style={{ width: `${zoom}%`, maxWidth: quizOpen ? 940 : 1050 }}>
           {material?.url && material.type === "application/pdf" ? (
             <PdfPageCanvas
               key={`${material.id}-${material.url}`}
@@ -1427,7 +1759,7 @@ function VisualExplainPanel({ loading, error, answer, question, traceCount, onCl
           </div>
         ) : (
           <div className="max-h-[340px] overflow-y-auto rounded-xl border border-vlearn-line bg-[#fbfdff] p-4">
-            <p className="whitespace-pre-line text-sm font-semibold leading-7 text-vlearn-muted">{answer}</p>
+            <SimpleMarkdownText content={answer} />
           </div>
         )}
         <div className="mt-4 flex items-center justify-between rounded-xl bg-vlearn-soft px-4 py-3">
@@ -1507,7 +1839,12 @@ function QuizToggle({ isOpen, tutorOpen, onClick }) {
 }
 
 function TutorMessageContent({ content, onJumpPage }) {
-  const parts = String(content).split(/(\[Trang\s+\d+\])/gi);
+  return <MarkdownContent content={content} onJumpPage={onJumpPage} />;
+}
+
+function LegacyTutorMessageContent({ content, onJumpPage }) {
+  const normalizedContent = String(content).replace(/\[Trang\s*(?:xx|x|\?+)\]/gi, "[Trang 1]");
+  const parts = normalizedContent.split(/(\[Trang\s+\d+\])/gi);
   return (
     <p className="whitespace-pre-line">
       {parts.map((part, index) => {
@@ -1529,7 +1866,84 @@ function TutorMessageContent({ content, onJumpPage }) {
   );
 }
 
-function TutorSidebar({ material, page, onJumpPage, onClose }) {
+function SimpleMarkdownText({ content }) {
+  return <MarkdownContent content={content} />;
+}
+
+function InlineMarkdown({ text, onJumpPage }) {
+  const normalized = String(text || "").replace(/\*\*/g, "");
+  const parts = normalized.split(/(\[Trang\s+\d+\])/gi);
+  return parts.map((part, index) => {
+    const match = part.match(/\[Trang\s+(\d+)\]/i);
+    if (!match) return <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>;
+    const pageNumber = Number(match[1]);
+    return (
+      <button
+        key={`${part}-${index}`}
+        onClick={() => onJumpPage?.(pageNumber)}
+        className="mx-1 inline-flex rounded-full border border-vlearn-line bg-white px-2 py-0.5 text-xs font-black text-vlearn-blue hover:bg-vlearn-soft"
+        title={`Nhảy đến trang ${pageNumber}`}
+      >
+        {part}
+      </button>
+    );
+  });
+}
+
+function MarkdownContent({ content, onJumpPage }) {
+  const normalizedContent = String(content || "").replace(/\[Trang\s*(?:xx|x|\?+)\]/gi, "[Trang 1]");
+  const blocks = normalizedContent.split(/```/);
+  return (
+    <div className="space-y-3 text-sm font-semibold leading-7 text-vlearn-muted">
+      {blocks.map((block, blockIndex) => {
+        if (blockIndex % 2 === 1) {
+          const code = block.replace(/^\w+\n/, "").trim();
+          return (
+            <pre key={`code-${blockIndex}`} className="overflow-x-auto rounded-xl bg-[#0f172a] p-3 text-xs font-semibold leading-5 text-slate-100">
+              <code>{code}</code>
+            </pre>
+          );
+        }
+        return block.split(/\n+/).map((rawLine, lineIndex) => {
+          const line = rawLine.trim();
+          if (!line) return null;
+          const heading = line.match(/^#{1,4}\s+(.+)/);
+          if (heading) {
+            return <h4 key={`${blockIndex}-${lineIndex}`} className="pt-1 text-base font-black text-vlearn-ink">{heading[1].replace(/\*\*/g, "")}</h4>;
+          }
+          const bullet = line.match(/^[-*]\s+(.+)/);
+          return (
+            <p key={`${blockIndex}-${lineIndex}`} className={bullet ? "pl-4 before:mr-2 before:content-['•']" : ""}>
+              <InlineMarkdown text={bullet ? bullet[1] : line} onJumpPage={onJumpPage} />
+            </p>
+          );
+        });
+      })}
+    </div>
+  );
+}
+
+function LegacySimpleMarkdownText({ content }) {
+  const lines = String(content || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return (
+    <div className="space-y-3 text-sm font-semibold leading-7 text-vlearn-muted">
+      {lines.map((line, index) => {
+        const heading = line.match(/^#{1,4}\s+(.+)/);
+        if (heading) {
+          return <h4 key={`${line}-${index}`} className="pt-1 text-base font-black text-vlearn-ink">{heading[1]}</h4>;
+        }
+        const bullet = line.match(/^[-*]\s+(.+)/);
+        return (
+          <p key={`${line}-${index}`} className={bullet ? "pl-4 before:mr-2 before:content-['•']" : ""}>
+            {(bullet ? bullet[1] : line).replace(/\*\*/g, "")}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function TutorSidebar({ material, page, width = 390, onResizeStart, onJumpPage, onClose }) {
   const [chatState, setChatState] = useState(() => loadTutorChats(material?.id || "default"));
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1614,8 +2028,14 @@ function TutorSidebar({ material, page, onJumpPage, onClose }) {
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute right-0 top-0 z-30 flex h-full w-[390px] flex-col border-l border-vlearn-line bg-white shadow-[-12px_0_32px_rgba(15,79,147,0.12)]"
+      className="absolute right-0 top-0 z-30 flex h-full flex-col border-l border-vlearn-line bg-white shadow-[-12px_0_32px_rgba(15,79,147,0.12)]"
+      style={{ width }}
     >
+      <div
+        onMouseDown={onResizeStart}
+        className="absolute left-0 top-0 z-40 h-full w-2 cursor-ew-resize border-l border-transparent hover:border-vlearn-blue/50 hover:bg-vlearn-blue/10"
+        title="Kéo để đổi độ rộng panel"
+      />
       <div className="flex items-start justify-between border-b border-vlearn-line px-5 py-5">
         <div className="flex gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-vlearn-soft text-vlearn-blue">
@@ -1713,7 +2133,7 @@ function TutorSidebar({ material, page, onJumpPage, onClose }) {
   );
 }
 
-function QuizSidebar({ material, onJumpPage, onClose }) {
+function QuizSidebar({ material, quizSettings = defaultQuizSettings, width = 390, onResizeStart, onJumpPage, onClose }) {
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -1735,7 +2155,7 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
     setError("");
     setStarted(false);
     try {
-      const aiQuestions = await createQuizWithAI(material, questionCount, questionHistory);
+      const aiQuestions = await createQuizWithAI(material, questionCount, questionHistory, quizSettings);
       setQuestions(aiQuestions);
       setQuestionHistory((items) => [
         ...items,
@@ -1743,7 +2163,13 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
       ].slice(-80));
       setSource("AI");
     } catch (err) {
-      const fallback = makeContentFallbackQuestions(material, questionCount, questionHistory);
+      const fallback = completeQuizQuestions(
+        material,
+        normalizeQuizQuestions(makeContentFallbackQuestions(material, questionCount, questionHistory, quizSettings), questionCount, material),
+        questionCount,
+        questionHistory,
+        quizSettings,
+      );
       setQuestions(fallback);
       setQuestionHistory((items) => [
         ...items,
@@ -1789,8 +2215,14 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute right-0 top-0 z-30 flex h-full w-[390px] flex-col border-l border-vlearn-line bg-white shadow-[-12px_0_32px_rgba(15,79,147,0.12)]"
+      className="absolute right-0 top-0 z-30 flex h-full flex-col border-l border-vlearn-line bg-white shadow-[-12px_0_32px_rgba(15,79,147,0.12)]"
+      style={{ width }}
     >
+      <div
+        onMouseDown={onResizeStart}
+        className="absolute left-0 top-0 z-40 h-full w-2 cursor-ew-resize border-l border-transparent hover:border-vlearn-blue/50 hover:bg-vlearn-blue/10"
+        title="Kéo để đổi độ rộng panel"
+      />
       <div className="flex items-start justify-between border-b border-vlearn-line px-5 py-5">
         <div className="flex gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-vlearn-soft text-vlearn-blue">
@@ -1812,6 +2244,8 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
             material={material}
             loading={loading}
             questionCount={questionCount}
+            suggestedCount={suggestQuestionCount(material)}
+            quizSettings={quizSettings}
             onQuestionCountChange={setQuestionCount}
             onGenerate={generateQuiz}
           />
@@ -1823,7 +2257,7 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
             <QuestionCard question={question} current={current} selected={selected} submitted={submitted} onSelect={setSelected} onJumpPage={onJumpPage} />
           </>
         )}
-        {completed && <ResultCard score={score} total={questions.length} questions={questions} answers={answers} onRetry={generateQuiz} />}
+        {completed && <ResultCard score={score} total={questions.length} questions={questions} answers={answers} onJumpPage={onJumpPage} onRetry={generateQuiz} />}
       </div>
 
       {started && !completed && question && (
@@ -1846,8 +2280,9 @@ function QuizSidebar({ material, onJumpPage, onClose }) {
   );
 }
 
-function IntroCard({ material, loading, questionCount, onQuestionCountChange, onGenerate }) {
+function IntroCard({ material, loading, questionCount, suggestedCount, quizSettings, onQuestionCountChange, onGenerate }) {
   const traceCount = material?.visualTraces?.length || 0;
+  const difficultyPlan = buildDifficultyPlan(questionCount, quizSettings);
   return (
     <section className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-5 shadow-sm">
       <div className="mb-5 flex items-center gap-2 text-sm font-bold text-emerald-600">
@@ -1860,6 +2295,11 @@ function IntroCard({ material, loading, questionCount, onQuestionCountChange, on
         Bấm Generate Quiz để tạo câu hỏi ưu tiên Agenda, mục tiêu bài học và các vùng bạn từng khoanh bằng Visual Explain.
         Mỗi lần tạo mới sẽ tránh lặp lại các câu trong phiên hiện tại.
       </p>
+      {material?.extractingText && (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+          Đang đọc text từng trang để tạo citation đúng và phủ Agenda tốt hơn...
+        </p>
+      )}
       <div className="mt-5 rounded-2xl border border-vlearn-line bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-black text-vlearn-blue">Số câu hỏi</p>
@@ -1884,15 +2324,26 @@ function IntroCard({ material, loading, questionCount, onQuestionCountChange, on
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => onQuestionCountChange(suggestedCount)}
+          className="mt-3 h-10 w-full rounded-xl border border-vlearn-line bg-vlearn-soft text-sm font-black text-vlearn-blue hover:bg-white"
+        >
+          Đề xuất {suggestedCount} câu để phủ kiến thức slide
+        </button>
+        <div className="mt-3 rounded-xl bg-[#fbfdff] p-3 text-xs font-bold leading-5 text-vlearn-muted">
+          <p className="font-black text-vlearn-blue">Độ khó theo Admin: {difficultyPlan.summary}</p>
+          <p>Dễ: nhận biết ý chính. Trung bình: giải thích/liên hệ. Khó: áp dụng hoặc phát hiện hiểu sai.</p>
+        </div>
         {traceCount > 0 && (
           <p className="mt-3 text-xs font-semibold leading-5 text-vlearn-muted">
             Quiz sẽ có ít nhất một câu cá nhân hóa từ vùng đã khoanh bằng Visual Explain.
           </p>
         )}
       </div>
-      <button onClick={onGenerate} disabled={loading} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn disabled:bg-[#b9c8d9]">
+      <button onClick={onGenerate} disabled={loading || material?.extractingText} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn disabled:bg-[#b9c8d9]">
         <Bot size={18} />
-        {loading ? "Đang tạo..." : "Generate Quiz"}
+        {material?.extractingText ? "Đang đọc slide..." : loading ? "Đang tạo..." : "Generate Quiz"}
       </button>
     </section>
   );
@@ -1914,10 +2365,14 @@ function ProgressBar({ current, total, source, traceCount }) {
 
 function QuestionCard({ question, current, selected, submitted, onSelect, onJumpPage }) {
   const isCorrect = selected === question.correct;
+  const difficultyLabel = { easy: "Dễ", medium: "Trung bình", hard: "Khó" }[question.difficulty] || "Trung bình";
 
   return (
     <section className="rounded-2xl border border-vlearn-line bg-white p-5 shadow-sm">
-      <p className="mb-2 text-sm font-extrabold text-vlearn-blue">Question {current + 1}</p>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-sm font-extrabold text-vlearn-blue">Question {current + 1}</p>
+        <span className="rounded-full border border-vlearn-line bg-[#fbfdff] px-3 py-1 text-xs font-black text-vlearn-muted">{difficultyLabel}</span>
+      </div>
       {question.personalized && (
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
           <ScanSearch size={13} />
@@ -1991,7 +2446,7 @@ function QuestionCard({ question, current, selected, submitted, onSelect, onJump
           {!isCorrect && <p className="mt-2 text-sm font-semibold text-vlearn-ink">Correct Answer: {String.fromCharCode(65 + question.correct)}</p>}
           <p className="mt-3 text-sm font-black">Explanation</p>
           <div className="mt-1 text-sm leading-6 text-vlearn-muted">
-            <TutorMessageContent content={question.explanation} onJumpPage={onJumpPage} />
+            <TutorMessageContent content={repairCitationText(question.explanation, question.sourcePage || question.visualTrace?.page || 1)} onJumpPage={onJumpPage} />
           </div>
         </div>
       )}
@@ -1999,7 +2454,7 @@ function QuestionCard({ question, current, selected, submitted, onSelect, onJump
   );
 }
 
-function ResultCard({ score, total, questions, answers, onRetry }) {
+function ResultCard({ score, total, questions, answers, onJumpPage, onRetry }) {
   const accuracy = Math.round((score / total) * 100);
   const weakTopics = questions.filter((question, index) => answers[index] !== question.correct).map((question) => question.question).slice(0, 3);
 
@@ -2026,6 +2481,62 @@ function ResultCard({ score, total, questions, answers, onRetry }) {
             <li key={item}>{item}</li>
           ))}
         </ul>
+      </div>
+      <div className="mt-5 space-y-4 text-left">
+        <div className="flex items-center justify-between">
+          <p className="font-black">Review All Questions</p>
+          <span className="rounded-full bg-vlearn-soft px-3 py-1 text-xs font-black text-vlearn-blue">{questions.length} câu</span>
+        </div>
+        {questions.map((question, questionIndex) => {
+          const selectedAnswer = answers[questionIndex];
+          const answeredCorrectly = selectedAnswer === question.correct;
+          return (
+            <article key={`${question.question}-${questionIndex}`} className="rounded-2xl border border-vlearn-line bg-[#fbfdff] p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-vlearn-blue">Question {questionIndex + 1}</p>
+                  <h4 className="mt-1 text-base font-black leading-6">{question.question}</h4>
+                </div>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-black ${answeredCorrectly ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                  {answeredCorrectly ? "Đúng" : "Sai"}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {question.options.map((option, optionIndex) => {
+                  const isCorrectOption = optionIndex === question.correct;
+                  const isSelectedWrong = selectedAnswer === optionIndex && !isCorrectOption;
+                  const isSelectedCorrect = selectedAnswer === optionIndex && isCorrectOption;
+                  return (
+                    <div
+                      key={`${option}-${optionIndex}`}
+                      className={`flex items-start gap-3 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                        isCorrectOption
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : isSelectedWrong
+                            ? "border-red-300 bg-red-50 text-red-700"
+                            : "border-vlearn-line bg-white text-vlearn-muted"
+                      }`}
+                    >
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs font-black">
+                        {String.fromCharCode(65 + optionIndex)}
+                      </span>
+                      <span className="min-w-0 flex-1">{option}</span>
+                      {isSelectedCorrect && <span className="shrink-0 text-xs font-black">Bạn chọn</span>}
+                      {isSelectedWrong && <span className="shrink-0 text-xs font-black">Bạn chọn sai</span>}
+                      {isCorrectOption && !isSelectedCorrect && <span className="shrink-0 text-xs font-black">Đáp án đúng</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 rounded-xl border border-vlearn-line bg-white p-3">
+                <p className="text-xs font-black text-vlearn-ink">Explanation</p>
+                <div className="mt-1 text-sm font-semibold leading-6 text-vlearn-muted">
+                  <TutorMessageContent content={repairCitationText(question.explanation, question.sourcePage || question.visualTrace?.page || 1)} onJumpPage={onJumpPage} />
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </div>
       <button onClick={onRetry} className="mt-5 h-12 w-full rounded-xl bg-vlearn-blue font-extrabold text-white shadow-vlearn">
         Retry Quiz
