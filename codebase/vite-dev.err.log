@@ -1,0 +1,72 @@
+[2m1:45:01 AM[22m [31m[1m[vite][22m[39m Pre-transform error: Transform failed with 1 error:
+D:/AIO/HACKATHON_DAY05/codebase/src/main.jsx:514:3: ERROR: Expected ";" but found "nfunction"
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/AIO/HACKATHON_DAY05/codebase/src/main.jsx[39m:514:3
+[33m  
+  [33mExpected ";" but found "nfunction"[33m
+  512|  }
+  513|  `r`nfunction completeQuizQuestions(material, questions, targetCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
+  514|    let next = questions.slice(0, targetCount);
+     |     ^
+  515|    const seen = new Set(next.map((item) => item.question.toLowerCase()));
+  516|    let guard = 0;
+  [39m
+[2m1:45:01 AM[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/AIO/HACKATHON_DAY05/codebase/src/main.jsx:514:3: ERROR: Expected ";" but found "nfunction"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/AIO/HACKATHON_DAY05/codebase/src/main.jsx[39m:514:3
+[33m  
+  [33mExpected ";" but found "nfunction"[33m
+  512|  }
+  513|  `r`nfunction completeQuizQuestions(material, questions, targetCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
+  514|    let next = questions.slice(0, targetCount);
+     |     ^
+  515|    const seen = new Set(next.map((item) => item.question.toLowerCase()));
+  516|    let guard = 0;
+  [39m
+      at failureErrorWithLog (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:519:28)
+      at addChunk (node:internal/streams/readable:561:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+      at Readable.push (node:internal/streams/readable:392:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[2m1:45:30 AM[22m [31m[1m[vite][22m[39m Pre-transform error: Transform failed with 1 error:
+D:/AIO/HACKATHON_DAY05/codebase/src/main.jsx:514:3: ERROR: Expected ";" but found "nfunction"
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/AIO/HACKATHON_DAY05/codebase/src/main.jsx[39m:514:3
+[33m  
+  [33mExpected ";" but found "nfunction"[33m
+  512|  }
+  513|  `r`nfunction completeQuizQuestions(material, questions, targetCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
+  514|    let next = questions.slice(0, targetCount);
+     |     ^
+  515|    const seen = new Set(next.map((item) => item.question.toLowerCase()));
+  516|    let guard = 0;
+  [39m
+[2m1:45:30 AM[22m [31m[1m[vite][22m[39m [31mInternal server error: Transform failed with 1 error:
+D:/AIO/HACKATHON_DAY05/codebase/src/main.jsx:514:3: ERROR: Expected ";" but found "nfunction"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/AIO/HACKATHON_DAY05/codebase/src/main.jsx[39m:514:3
+[33m  
+  [33mExpected ";" but found "nfunction"[33m
+  512|  }
+  513|  `r`nfunction completeQuizQuestions(material, questions, targetCount, previousQuestions = [], quizSettings = defaultQuizSettings) {
+  514|    let next = questions.slice(0, targetCount);
+     |     ^
+  515|    const seen = new Set(next.map((item) => item.question.toLowerCase()));
+  516|    let guard = 0;
+  [39m
+      at failureErrorWithLog (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:1467:15)
+      at D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (D:\AIO\HACKATHON_DAY05\codebase\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:519:28)
+      at addChunk (node:internal/streams/readable:561:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+      at Readable.push (node:internal/streams/readable:392:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
